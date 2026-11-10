@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Tijolo Clicker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Clique para assentar tijolos, construa pavimentos e monte sua construtora.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="logo"><canvas class="logo-icon" id="logo-icon" width="12" height="12" aria-hidden="true"></canvas>Tijolo Clicker</h1>
+    <div class="stats">
+      <div class="stat stat-money"><span class="label">Dinheiro</span><span class="value" id="st-money">R$ 0</span></div>
+      <div class="stat"><span class="label">Aluguel</span><span class="value" id="st-rent">R$ 0/s</span></div>
+      <div class="stat"><span class="label">Tijolos/s</span><span class="value" id="st-bps">0</span></div>
+      <div class="stat"><span class="label">Por clique</span><span class="value" id="st-click">1</span></div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" aria-label="Obra">
+      <div class="screen" id="screen">
+        <canvas id="game" width="200" height="240" tabindex="0" aria-label="Obra. Clique ou aperte espaço para assentar tijolos."></canvas>
+        <div class="fx" id="fx" aria-hidden="true"></div>
+        <div class="hint" id="hint">Clique na obra para assentar tijolos</div>
+        <div class="toasts" id="toasts" aria-live="polite"></div>
+      </div>
+      <div class="progress">
+        <div class="progress-label"><span id="pv-name">1º pavimento</span><span id="pv-count">0 / 50 tijolos</span></div>
+        <div class="bar"><div class="fill" id="pv-fill"></div></div>
+      </div>
+    </section>
+
+    <aside class="shop" aria-label="Loja">
+      <div id="shop"></div>
+    </aside>
+  </main>
+
+  <footer class="bottom">
+    <button type="button" id="btn-sound">Som: ligado</button>
+    <button type="button" id="btn-save">Salvar</button>
+    <span class="reset" id="reset-wrap"><button type="button" id="btn-reset">Recomeçar</button></span>
+    <span class="ver">v0.1</span>
+  </footer>
+</div>
+
+<div class="modal" id="offline" hidden>
+  <div class="modal-box" role="dialog" aria-labelledby="offline-title">
+    <h2 id="offline-title">Bem-vindo de volta!</h2>
+    <p id="offline-text"></p>
+    <button type="button" id="offline-ok">Continuar a obra</button>
+  </div>
+</div>
+
+<script src="js/game.js"></script>
+</body>
+</html>
