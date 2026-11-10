@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Tijolo Clicker</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Clique para assentar tijolos, construa pavimentos e monte sua construtora.">
+<meta name="description" content="Jogo clicker e idle de construção em pixel art: assente tijolos, erga prédios e monte sua construtora.">
+<meta name="theme-color" content="#221915">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%23cfc1a8'/%3E%3Crect x='0' y='1' width='7' height='6' fill='%23b5523b'/%3E%3Crect x='8' y='1' width='8' height='6' fill='%23b5523b'/%3E%3Crect x='0' y='9' width='3' height='6' fill='%23b5523b'/%3E%3Crect x='4' y='9' width='8' height='6' fill='%23b5523b'/%3E%3Crect x='13' y='9' width='3' height='6' fill='%23b5523b'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
@@ -14,19 +16,21 @@
 <body>
 <div class="app">
   <header class="top">
-    <h1 class="logo"><canvas class="logo-icon" id="logo-icon" width="12" height="12" aria-hidden="true"></canvas>Tijolo Clicker</h1>
+    <h1 class="logo"><canvas class="logo-icon" id="logo-icon" width="16" height="16" aria-hidden="true"></canvas>Tijolo Clicker</h1>
     <div class="stats">
       <div class="stat stat-money"><span class="label">Dinheiro</span><span class="value" id="st-money">R$ 0</span></div>
       <div class="stat"><span class="label">Aluguel</span><span class="value" id="st-rent">R$ 0/s</span></div>
       <div class="stat"><span class="label">Tijolos/s</span><span class="value" id="st-bps">0</span></div>
       <div class="stat"><span class="label">Por clique</span><span class="value" id="st-click">1</span></div>
+      <div class="stat stat-stars"><span class="label">Reputação</span><span class="value"><canvas class="star-icon" id="star-icon" width="16" height="16" aria-hidden="true"></canvas><span id="st-stars">0</span><small id="st-stars-bonus">+0%</small></span></div>
     </div>
   </header>
 
   <main class="layout">
     <section class="stage" aria-label="Obra">
+      <div class="project-bar"><span class="pj-label">Obra atual</span><strong id="pj-name">Casa</strong></div>
       <div class="screen" id="screen">
-        <canvas id="game" width="200" height="240" tabindex="0" aria-label="Obra. Clique ou aperte espaço para assentar tijolos."></canvas>
+        <canvas id="game" width="320" height="384" tabindex="0" aria-label="Obra. Clique ou aperte espaço para assentar tijolos."></canvas>
         <div class="fx" id="fx" aria-hidden="true"></div>
         <div class="hint" id="hint">Clique na obra para assentar tijolos</div>
         <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -41,22 +45,66 @@
         </div>
       </div>
       <div class="progress">
-        <div class="progress-label"><span id="pv-name">1º pavimento</span><span id="pv-count">0 / 50 tijolos</span></div>
+        <div class="progress-label"><span id="pv-name">1º de 3 pavimentos</span><span id="pv-count">0 / 50 tijolos</span></div>
         <div class="bar"><div class="fill" id="pv-fill"></div></div>
       </div>
       <div class="effects" id="effects" hidden></div>
+      <div class="deliver" id="deliver" hidden>
+        <p id="deliver-text"></p>
+        <div class="deliver-actions" id="deliver-actions"></div>
+      </div>
     </section>
 
-    <aside class="shop" aria-label="Loja">
-      <div id="shop"></div>
+    <aside class="panel" aria-label="Painel">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tabbtn-loja" aria-controls="tab-loja" aria-selected="true">Loja</button>
+        <button type="button" role="tab" id="tabbtn-conquistas" aria-controls="tab-conquistas" aria-selected="false">Conquistas</button>
+        <button type="button" role="tab" id="tabbtn-obra" aria-controls="tab-obra" aria-selected="false">Obra</button>
+      </div>
+
+      <div class="tab" id="tab-loja" role="tabpanel" aria-labelledby="tabbtn-loja">
+        <h2 class="shop-cat">Melhorias</h2>
+        <div class="upgrades" id="upgrades"></div>
+        <p class="muted" id="upg-empty">Novas melhorias aparecem conforme a obra avança.</p>
+        <div class="upg-detail" id="upg-detail"></div>
+
+        <div class="shop-head">
+          <h2 class="shop-cat">Equipe e máquinas</h2>
+          <div class="qty" role="group" aria-label="Quantidade">
+            <button type="button" data-q="1" aria-pressed="true">×1</button>
+            <button type="button" data-q="10" aria-pressed="false">×10</button>
+            <button type="button" data-q="100" aria-pressed="false">×100</button>
+          </div>
+        </div>
+        <div class="list" id="producers"></div>
+
+        <h2 class="shop-cat">Acabamentos</h2>
+        <div class="list" id="finishes"></div>
+
+        <h2 class="shop-cat">Segurança</h2>
+        <div class="list" id="safety"></div>
+      </div>
+
+      <div class="tab" id="tab-conquistas" role="tabpanel" aria-labelledby="tabbtn-conquistas" hidden>
+        <p class="summary" id="ach-summary"></p>
+        <div class="ach-grid" id="ach-grid"></div>
+        <p class="ach-detail" id="ach-detail">Passe o mouse ou toque numa conquista.</p>
+      </div>
+
+      <div class="tab" id="tab-obra" role="tabpanel" aria-labelledby="tabbtn-obra" hidden>
+        <h2 class="shop-cat">Obras</h2>
+        <ol class="proj-list" id="proj-list"></ol>
+        <h2 class="shop-cat">Estatísticas</h2>
+        <dl class="stats-list" id="stats-list"></dl>
+      </div>
     </aside>
   </main>
 
   <footer class="bottom">
     <button type="button" id="btn-sound">Som: ligado</button>
     <button type="button" id="btn-save">Salvar</button>
-    <span class="reset" id="reset-wrap"><button type="button" id="btn-reset">Recomeçar</button></span>
-    <span class="ver">v0.2</span>
+    <span class="reset" id="reset-wrap"></span>
+    <span class="ver">v1.0</span>
   </footer>
 </div>
 
@@ -68,6 +116,9 @@
   </div>
 </div>
 
+<script src="js/data.js"></script>
+<script src="js/art.js"></script>
+<script src="js/world.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

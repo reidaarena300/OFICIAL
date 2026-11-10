@@ -1,23 +1,35 @@
 # Tijolo Clicker
 
 Jogo *clicker/idle* de navegador com temática de engenharia civil, em pixel art.
-Clique para assentar tijolos, feche pavimentos, receba aluguel e monte sua equipe de obra.
+Clique para assentar tijolos, erga prédios andar por andar, monte sua equipe e entregue obras cada vez maiores.
 
 ## Como jogar
 - **Clique na obra** (ou aperte espaço) para assentar tijolos.
 - Cada pavimento concluído paga um valor e passa a render **aluguel** por segundo.
-- Na loja:
-  - **Ferramentas:** mais tijolos por clique.
-  - **Equipe:** servente, pedreiro e mestre de obras constroem sozinhos.
-  - **Peças:** janelas e portas aumentam o aluguel e aparecem no prédio.
+- **Loja:**
+  - **Melhorias** (grade de ícones): dobram a produção de um tipo de trabalhador ou máquina, dobram o clique, fazem o clique ganhar parte dos tijolos/s ou aumentam o aluguel. Aparecem conforme você avança.
+  - **Equipe e máquinas** (12 níveis): Servente, Pedreiro, Betoneira, Mestre de obras, Caminhão de tijolos, Guindaste de torre, Engenheira civil, Bomba de concreto, Impressora 3D de concreto, Robô pedreiro, Fábrica de pré-moldados e Consórcio de construtoras. Compre de 1 em 1, de 10 em 10 ou de 100 em 100.
+  - **Acabamentos:** janela, sacada, floreira e ar-condicionado. Aumentam o aluguel e aparecem desenhados no prédio.
   - **Segurança:** lona, kit de EPI e laudo do engenheiro protegem contra os imprevistos.
-- **Imprevistos da obra** (a partir do 1º pavimento):
-  - **Guindaste com material:** clique no palete para ganhar tijolos, dinheiro ou cliques ×7.
-  - **Chuva:** a equipe rende metade por 30s (a lona evita).
-  - **Rachadura:** aluguel −30% até você clicar nela algumas vezes para consertar (o laudo evita).
-  - **Fiscal da prefeitura:** multa se a equipe estiver sem EPI, bônus se estiver com EPI.
-  - **Escolhas:** mudança de planta, material barato e hora extra. Aceite ou recuse em até 20s.
+- **Obras:** Casa → Sobrado → Edifício residencial → Edifício comercial → Hotel → Arranha-céu → Torre recorde.
+  Ao terminar uma obra, **entregue-a** para ganhar estrelas de **Reputação** (+5% em tudo, para sempre) e começar a próxima do zero.
+  A Torre recorde fica 5 andares mais alta a cada entrega.
+- **Imprevistos** (a partir do 1º pavimento):
+  - **Entrega de material:** clique no palete para ganhar tijolos, dinheiro, cliques ×7 ou equipe ×4.
+  - **Chuva:** equipe −50% por 30s (a lona evita).
+  - **Rachadura:** aluguel −30% até você clicar nela para consertar (o laudo evita).
+  - **Fiscal da prefeitura:** multa sem EPI, bônus com EPI.
+  - **Propostas:** mudança de planta, material barato, hora extra e festa da laje.
+- **Conquistas** (48): cada uma dá +1% em tudo.
 - O jogo salva sozinho no navegador e continua rendendo enquanto você está fora (até 8h).
+
+## Visual
+Tudo é desenhado por código em pixel art (tela de 320×384):
+- cada obra tem seu estilo de fachada e telhado;
+- cada andar sorteia cor, tipo de janela, toldos e decorações (trepadeira, gato na janela, varal, grafite, placas…);
+- as janelas compradas aparecem no prédio, e as que faltam ficam tapadas com tábua, lona ou tijolo;
+- as máquinas compradas aparecem no cenário (betoneira, caminhão, guindaste de torre, impressora 3D, robôs, fábrica, dirigível);
+- ciclo de dia e noite com luzes acesas, carros na rua, pássaros, avião e um mar de nuvens por volta do 28º andar.
 
 ## Rodar localmente
 Abra o `index.html` no navegador. Não precisa instalar nada.
@@ -28,10 +40,12 @@ Settings → Pages → *Deploy from a branch* → `main` / `(root)`.
 ## Estrutura
 - `index.html`: página do jogo
 - `style.css`: visual da interface
-- `js/game.js`: lógica, economia e toda a pixel art (desenhada pelo código)
+- `js/data.js`: itens, obras, conquistas e fórmulas da economia (também roda no Node, para simulações)
+- `js/art.js`: ícones 16×16 e fonte de pixels
+- `js/world.js`: cenário, prédio e efeitos
+- `js/game.js`: lógica, imprevistos, loja, abas e salvamento
 
-## Roteiro
-- **v0.1:** tijolos, pavimentos, dinheiro, aluguel, 3 trabalhadores, janela e porta, salvamento automático e progresso offline, ciclo de dia e noite.
-- **v0.2 (atual):** imprevistos da obra (guindaste, chuva, rachadura, fiscal, eventos de escolha) e itens de segurança (lona, EPI, laudo).
-- **v0.3:** novos projetos (sobrado, prédio, arranha-céu), prestígio (Reputação) e conquistas.
-- **v1.0:** arte final, sons e lançamento no itch.io.
+## Versões
+- **v0.1:** tijolos, pavimentos, aluguel, 3 trabalhadores, janela e porta, salvamento e progresso offline.
+- **v0.2:** imprevistos da obra e itens de segurança.
+- **v1.0 (atual):** 12 tipos de equipe e máquina, 88 melhorias, acabamentos, 7 obras com Reputação, 48 conquistas, abas de Conquistas e Obra, visual novo com mais pixels e andares variados.
