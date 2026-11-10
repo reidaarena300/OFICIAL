@@ -30,11 +30,21 @@
         <div class="fx" id="fx" aria-hidden="true"></div>
         <div class="hint" id="hint">Clique na obra para assentar tijolos</div>
         <div class="toasts" id="toasts" aria-live="polite"></div>
+        <div class="choice" id="choice" role="dialog" aria-labelledby="choice-title" hidden>
+          <p class="choice-title" id="choice-title"></p>
+          <p class="choice-text" id="choice-text"></p>
+          <div class="choice-actions">
+            <button type="button" id="choice-yes">Aceitar</button>
+            <button type="button" id="choice-no">Recusar</button>
+          </div>
+          <div class="choice-timer"><div id="choice-bar"></div></div>
+        </div>
       </div>
       <div class="progress">
         <div class="progress-label"><span id="pv-name">1º pavimento</span><span id="pv-count">0 / 50 tijolos</span></div>
         <div class="bar"><div class="fill" id="pv-fill"></div></div>
       </div>
+      <div class="effects" id="effects" hidden></div>
     </section>
 
     <aside class="shop" aria-label="Loja">
@@ -46,7 +56,7 @@
     <button type="button" id="btn-sound">Som: ligado</button>
     <button type="button" id="btn-save">Salvar</button>
     <span class="reset" id="reset-wrap"><button type="button" id="btn-reset">Recomeçar</button></span>
-    <span class="ver">v0.1</span>
+    <span class="ver">v0.2</span>
   </footer>
 </div>
 

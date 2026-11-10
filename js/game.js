@@ -1,4 +1,4 @@
-/* Tijolo Clicker v0.1 — clique, assente tijolos, feche pavimentos, ganhe aluguel. */
+/* Tijolo Clicker v0.2 — clique, assente tijolos, feche pavimentos, ganhe aluguel e enfrente os imprevistos da obra. */
 (() => {
   'use strict';
 
@@ -34,12 +34,16 @@
     { id: 'mestre',   cat: 'Equipe',      name: 'Mestre de obras',    desc: 'Assenta 15 tijolos/s', base: 1500, growth: 1.15, bps: 15 },
     { id: 'janela',   cat: 'Peças',       name: 'Janela',             desc: '+15% no aluguel',      base: 40,   growth: 1.22, limit: () => S.floors * 2, limitMsg: '2 por pavimento' },
     { id: 'porta',    cat: 'Peças',       name: 'Porta',              desc: '+35% no aluguel',      base: 120,  growth: 1.3,  limit: () => S.floors,     limitMsg: '1 por pavimento' },
+    { id: 'lona',     cat: 'Segurança',   name: 'Lona de proteção',   desc: 'A chuva não para a equipe',     base: 250,  growth: 1, once: true, limit: () => 1 },
+    { id: 'epi',      cat: 'Segurança',   name: 'Kit de EPI',         desc: 'O fiscal sempre aprova a obra', base: 600,  growth: 1, once: true, limit: () => 1 },
+    { id: 'laudo',    cat: 'Segurança',   name: 'Laudo do engenheiro', desc: 'Evita rachaduras na obra',     base: 1500, growth: 1, once: true, limit: () => 1 },
   ];
 
   const fresh = () => ({
     v: 1, bricks: 0, floors: 0, money: 0,
     totalBricks: 0, totalMoney: 0, clicks: 0,
-    owned: { colher: 0, servente: 0, pedreiro: 0, mestre: 0, janela: 0, porta: 0 },
+    owned: { colher: 0, servente: 0, pedreiro: 0, mestre: 0, janela: 0, porta: 0, lona: 0, epi: 0, laudo: 0 },
+    stats: { cranes: 0, cracks: 0, inspections: 0, fines: 0, choices: 0 },
     seen: {}, muted: false, lastSave: Date.now(),
   });
   let S = fresh();
@@ -49,6 +53,20 @@
   const bps = () => ITEMS.reduce((a, it) => a + (it.bps || 0) * S.owned[it.id], 0);
   const rentMult = () => 1 + 0.15 * S.owned.janela + 0.35 * S.owned.porta;
   const rent = () => baseRent(S.floors) * rentMult();
+
+  // ================================================================
+  // Eventos (estado só em memória; não é salvo)
+  // ================================================================
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const EV = {
+    effects: [], crane: null, crack: null, inspector: null, choice: null, pendingCrack: null,
+    nextCrane: 25, nextBad: 75, nextChoice: 130, drops: [],
+  };
+  const effMult = key => EV.effects.reduce((m, e) => m * (e[key] || 1), 1);
+  const clickPower = () => perClick() * effMult('click');
+  const bpsNow = () => bps() * effMult('bps');
+  const rentNow = () => rent() * effMult('rent') * (EV.crack ? 0.7 : 1);
+  const hasEffect = id => EV.effects.some(e => e.id === id);
 
   function addBricks(n, withFx) {
     S.bricks += n;
@@ -200,6 +218,48 @@
       'RRReeRRRRRRe',
       'eeeeeeeeeeee',
       '............',
+    ]),
+    lona: sprite([
+      '............',
+      'hbbbbbbbbbbh',
+      'bBbbbbbbbbbb',
+      'bbBbbbbbbbbb',
+      'bbbBbbbbbbbb',
+      'bbbbBbbbbbbb',
+      'bbbbbBbbbbbb',
+      'bbbbbbBbbbbb',
+      'bbbbbbbBbbbb',
+      'hbbbbbbbBbbh',
+      '.k........k.',
+      '.k........k.',
+    ]),
+    epi: sprite([
+      '....yyyy....',
+      '..yyyhyyyy..',
+      '.yyyyyyyyyy.',
+      'kkkkkkkkkkkk',
+      '............',
+      '.ooo....ooo.',
+      'oooooooooooo',
+      'ohhhhhhhhhho',
+      'oooooooooooo',
+      'ohhhhhhhhhho',
+      'oooooooooooo',
+      '.oooooooooo.',
+    ]),
+    laudo: sprite([
+      '.hhhhhhhh...',
+      '.hkkkkkkhh..',
+      '.hhhhhhhhhh.',
+      '.hkkkkkkkkh.',
+      '.hhhhhhhhhh.',
+      '.hkkkkkhhhh.',
+      '.hhhhhhhhhh.',
+      '.hhhhhrrrhh.',
+      '.hkkhrhhhrh.',
+      '.hhhhrhhhrh.',
+      '.hhhhhrrrhh.',
+      '.hhhhhhhhhh.',
     ]),
     mystery: sprite([
       '...kkkkkk...',
@@ -686,6 +746,358 @@
     }
   }
 
+  // ================================================================
+  // Eventos da obra
+  // ================================================================
+  function addEffect(e) {
+    const i = EV.effects.findIndex(x => x.id === e.id);
+    const fx = Object.assign({}, e, { t: e.dur });
+    if (i >= 0) EV.effects[i] = fx; else EV.effects.push(fx);
+  }
+
+  // ---------- Guindaste com material (evento bom, clicável) ----------
+  function spawnCrane() {
+    EV.crane = { t: 0, life: 13, x: BX + 22 + Math.random() * (WALL_W - 44), y: -30, phase: Math.random() * 6, gone: false };
+    sfx.crane();
+    if (!S.stats.cranes) toast('O guindaste trouxe material! Clique nele!');
+  }
+
+  const craneX = c => c.x + Math.sin(c.t * 1.7 + c.phase) * 6;
+
+  function updateCrane(dt) {
+    const c = EV.crane;
+    if (!c) return;
+    c.t += dt;
+    const hover = 44;
+    if (c.gone || c.t > c.life) c.y -= 90 * dt;
+    else c.y += (hover - c.y) * Math.min(1, dt * 2.5);
+    if ((c.gone || c.t > c.life) && c.y < -34) EV.crane = null;
+  }
+
+  function hitCrane(x, y) {
+    const c = EV.crane;
+    if (!c || c.gone) return false;
+    const cx = craneX(c);
+    return x > cx - 15 && x < cx + 15 && y > c.y - 6 && y < c.y + 18;
+  }
+
+  function collectCrane() {
+    const c = EV.crane;
+    c.gone = true;
+    S.stats.cranes++;
+    const cx = craneX(c);
+    const r = Math.random();
+    sfx.collect();
+    dust(cx, c.y + 8, 12, ['#f2c14e', '#fff0a6', '#ffffff']);
+    if (r < 0.45) {
+      const n = Math.ceil(Math.max(25 * perClick(), 40 * bps()));
+      addBricks(n, true);
+      floatText('+' + fmt(n) + ' tijolos', cx, c.y + 10, 'money');
+      toast(`Entrega de material: +${fmt(n)} tijolos!`);
+    } else if (r < 0.8) {
+      const m = Math.ceil(Math.max(30 + 10 * S.floors, 75 * rent()));
+      addMoney(m);
+      floatText('+' + money(m), cx, c.y + 10, 'money');
+      toast(`Material revendido: +${money(m)}!`);
+    } else {
+      addEffect({ id: 'estagiario', label: 'Estagiário animado', kind: 'good', dur: 15, click: 7, desc: 'cliques ×7' });
+      floatText('Cliques ×7!', cx, c.y + 10, 'money');
+      toast('Estagiário animado: cliques ×7 por 15s!');
+    }
+  }
+
+  function drawCrane() {
+    const c = EV.crane;
+    if (!c) return;
+    const x = Math.round(craneX(c)), y = Math.round(c.y);
+    // cabo vindo do topo da tela
+    ctx.fillStyle = '#3b3b46';
+    ctx.fillRect(x, -2, 1, y + 2);
+    // gancho
+    ctx.fillStyle = '#f2c14e'; ctx.fillRect(x - 2, y - 1, 5, 3);
+    ctx.fillStyle = '#3b3b46'; ctx.fillRect(x - 6, y + 2, 1, 4); ctx.fillRect(x + 6, y + 2, 1, 4);
+    ctx.fillRect(x - 6, y + 2, 13, 1);
+    // tijolos no palete
+    for (let r = 0; r < 3; r++) {
+      for (let k = 0; k < 3; k++) {
+        const bx = x - 9 + k * 6 + (r % 2 ? 1 : 0), by = y + 6 + r * 3;
+        ctx.fillStyle = '#7d3423'; ctx.fillRect(bx, by, 6, 3);
+        ctx.fillStyle = '#b5523b'; ctx.fillRect(bx, by, 5, 2);
+        ctx.fillStyle = '#d07355'; ctx.fillRect(bx, by, 5, 1);
+      }
+    }
+    // palete de madeira
+    ctx.fillStyle = '#a0652f'; ctx.fillRect(x - 10, y + 15, 21, 2);
+    ctx.fillStyle = '#6e4220'; ctx.fillRect(x - 9, y + 17, 2, 1); ctx.fillRect(x - 1, y + 17, 2, 1); ctx.fillRect(x + 7, y + 17, 2, 1);
+    // brilho piscando para chamar atenção
+    if (!c.gone && Math.floor(c.t * 3) % 2 === 0) {
+      ctx.fillStyle = '#fff0a6';
+      ctx.fillRect(x - 13, y + 4, 1, 3); ctx.fillRect(x - 14, y + 5, 3, 1);
+      ctx.fillRect(x + 13, y + 9, 1, 3); ctx.fillRect(x + 12, y + 10, 3, 1);
+    }
+  }
+
+  // ---------- Rachadura (evento ruim, clicável) ----------
+  const CRACK = [[3, 0], [4, 1], [3, 2], [2, 3], [3, 4], [4, 5], [5, 6], [4, 7], [3, 8], [4, 9], [5, 10], [6, 11], [5, 3], [6, 4], [7, 4], [2, 7], [1, 8], [0, 9]];
+
+  function spawnCrack() {
+    if (S.floors < 1 || EV.crack || S.owned.laudo) return false;
+    EV.crack = { x: BX + 8 + Math.floor(Math.random() * (WALL_W - 24)), yo: 6 + Math.floor(Math.random() * 20), hp: 6, t: 0 };
+    sfx.crack();
+    shake = 0.3;
+    toast('Rachadura! Aluguel −30%. Clique nela para consertar.');
+    return true;
+  }
+
+  const crackPos = () => ({ x: EV.crack.x, y: Math.round(floorBase(S.floors - 1) - WALL_H + EV.crack.yo) });
+
+  function hitCrack(x, y) {
+    if (!EV.crack) return false;
+    const p = crackPos();
+    return x > p.x - 6 && x < p.x + 14 && y > p.y - 6 && y < p.y + 18;
+  }
+
+  function repairCrack() {
+    const p = crackPos();
+    EV.crack.hp--;
+    dust(p.x + 4, p.y + 6, 6);
+    if (EV.crack.hp <= 0) {
+      EV.crack = null;
+      S.stats.cracks++;
+      sfx.buy();
+      floatText('Consertado!', p.x + 4, p.y, 'money');
+      toast('Rachadura consertada! O aluguel voltou ao normal.');
+    } else {
+      sfx.fix();
+      floatText('Reboco! ' + EV.crack.hp, p.x + 4, p.y);
+    }
+  }
+
+  function drawCrack() {
+    const c = EV.crack;
+    if (!c) return;
+    c.t += 1 / 60;
+    const p = crackPos();
+    const n = Math.ceil(CRACK.length * c.hp / 6);
+    ctx.fillStyle = '#2b1d14';
+    for (let i = 0; i < n; i++) ctx.fillRect(p.x + CRACK[i][0], p.y + CRACK[i][1], 2, 1);
+    ctx.fillStyle = '#5e3820';
+    for (let i = 0; i < n; i++) ctx.fillRect(p.x + CRACK[i][0] + 2, p.y + CRACK[i][1], 1, 1);
+    if (Math.floor(c.t * 3) % 2 === 0) {
+      ctx.fillStyle = '#ff4d3d';
+      const x0 = p.x - 3, y0 = p.y - 3, x1 = p.x + 10, y1 = p.y + 14;
+      ctx.fillRect(x0, y0, 3, 1); ctx.fillRect(x0, y0, 1, 3);
+      ctx.fillRect(x1 - 2, y0, 3, 1); ctx.fillRect(x1, y0, 1, 3);
+      ctx.fillRect(x0, y1, 3, 1); ctx.fillRect(x0, y1 - 2, 1, 3);
+      ctx.fillRect(x1 - 2, y1, 3, 1); ctx.fillRect(x1, y1 - 2, 1, 3);
+    }
+  }
+
+  // ---------- Chuva (evento ruim) ----------
+  function startRain() {
+    const protectedByLona = S.owned.lona > 0;
+    addEffect(protectedByLona
+      ? { id: 'chuva', label: 'Chuva', kind: 'neutral', dur: 30, desc: 'a lona protege a equipe', rain: true }
+      : { id: 'chuva', label: 'Chuva', kind: 'bad', dur: 30, bps: 0.5, desc: 'equipe −50%', rain: true });
+    toast(protectedByLona ? 'Começou a chover. A lona protegeu a obra!' : 'Chuva! A equipe trabalha na metade do ritmo.');
+    if (!EV.drops.length) {
+      for (let i = 0; i < 80; i++) EV.drops.push({ x: Math.random() * (W + 40), y: Math.random() * H, sp: 160 + Math.random() * 80 });
+    }
+  }
+
+  function updateRain(dt) {
+    if (!hasEffect('chuva')) return;
+    for (const d of EV.drops) {
+      d.y += d.sp * dt; d.x -= d.sp * 0.25 * dt;
+      if (d.y > H) { d.y = -4; d.x = Math.random() * (W + 40); }
+    }
+  }
+
+  function drawRain() {
+    const e = EV.effects.find(x => x.id === 'chuva');
+    if (!e) return;
+    const fade = Math.min(1, Math.min(e.t, e.dur - e.t) / 2);
+    ctx.globalAlpha = 0.22 * fade;
+    ctx.fillStyle = '#2a3445';
+    ctx.fillRect(-2, -2, W + 4, H + 4);
+    ctx.globalAlpha = 0.7 * fade;
+    ctx.fillStyle = '#a9c8e8';
+    for (const d of EV.drops) { ctx.fillRect(Math.round(d.x), Math.round(d.y), 1, 3); }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- Fiscal da prefeitura (evento ruim ou bom, depende do EPI) ----------
+  function startInspector() {
+    EV.inspector = { x: BX - 8, state: 'in', t: 0, dir: 1 };
+    sfx.whistle();
+    toast('O fiscal da prefeitura chegou para vistoriar a obra.');
+  }
+
+  function updateInspector(dt) {
+    const f = EV.inspector;
+    if (!f) return;
+    f.t += dt;
+    const mid = BX + WALL_W / 2 - 3;
+    if (f.state === 'in') {
+      f.x += 16 * dt;
+      if (f.x >= mid) { f.x = mid; f.state = 'check'; f.t = 0; }
+    } else if (f.state === 'check') {
+      if (f.t > 3) { verdict(); f.state = 'out'; f.t = 0; }
+    } else {
+      f.x += 22 * dt;
+      if (f.x > BX + WALL_W + 4) EV.inspector = null;
+    }
+  }
+
+  function verdict() {
+    S.stats.inspections++;
+    const fx = BX + WALL_W / 2, fy = floorBase(S.floors) - 20;
+    if (S.owned.epi) {
+      const bonus = Math.ceil(Math.max(40, 90 * rent()));
+      addMoney(bonus);
+      sfx.collect();
+      floatText('+' + money(bonus), fx, fy, 'money');
+      toast(`Fiscal: obra exemplar, todos com EPI! Bônus de ${money(bonus)}.`);
+    } else {
+      const fine = Math.floor(Math.min(S.money * 0.2, Math.max(20, rent() * 120)));
+      S.money -= fine;
+      S.stats.fines++;
+      sfx.deny();
+      floatText('−' + money(fine), fx, fy, 'bad');
+      toast(fine > 0 ? `Multa: equipe sem EPI! −${money(fine)}. Compre o Kit de EPI.` : 'Fiscal: equipe sem EPI. Desta vez foi só advertência.');
+    }
+  }
+
+  function drawInspector() {
+    const f = EV.inspector;
+    if (!f) return;
+    const x = Math.round(f.x), y = Math.round(floorBase(S.floors)) - 10;
+    const step = f.state === 'check' ? 0 : Math.floor(f.t * 6) % 2;
+    ctx.fillStyle = '#1f3b73'; ctx.fillRect(x, y, 5, 2); ctx.fillRect(x - 1, y + 2, 7, 1);   // chapéu
+    ctx.fillStyle = '#e9b48a'; ctx.fillRect(x + 1, y + 3, 3, 2);
+    ctx.fillStyle = '#1d1d1d'; ctx.fillRect(x + 3, y + 3, 1, 1);
+    ctx.fillStyle = '#2f3542'; ctx.fillRect(x, y + 5, 5, 3);                                  // terno
+    ctx.fillStyle = '#f4f4f0'; ctx.fillRect(x + 2, y + 5, 1, 2);
+    ctx.fillStyle = '#c9a26b'; ctx.fillRect(x + 5, y + 5, 2, 3);                              // prancheta
+    ctx.fillStyle = '#2b2b33';
+    if (step) { ctx.fillRect(x, y + 8, 1, 2); ctx.fillRect(x + 4, y + 8, 1, 2); ctx.fillRect(x + 1, y + 8, 3, 1); }
+    else { ctx.fillRect(x + 1, y + 8, 1, 2); ctx.fillRect(x + 3, y + 8, 1, 2); }
+    if (f.state === 'check') {
+      // balão "..."
+      ctx.fillStyle = '#f4f4f0'; ctx.fillRect(x - 2, y - 9, 11, 6); ctx.fillRect(x + 1, y - 3, 2, 2);
+      ctx.fillStyle = '#2b1d14';
+      const dots = 1 + Math.floor(f.t * 2) % 3;
+      for (let i = 0; i < dots; i++) ctx.fillRect(x + i * 3, y - 7, 1, 2);
+    }
+  }
+
+  // ---------- Eventos de escolha ----------
+  function makeChoice() {
+    const opts = [];
+    if (S.bricks > need(S.floors) * 0.3) {
+      const pay = reward(S.floors) * 2;
+      opts.push({
+        title: 'Mudança de planta',
+        text: `O cliente quer mudar a planta deste pavimento. Você desmancha 40% dos tijolos assentados, mas ele paga ${money(pay)} na hora.`,
+        yes: () => { S.bricks *= 0.6; addMoney(pay); toast(`Planta alterada! +${money(pay)}.`); },
+      });
+    }
+    if (bps() > 0) {
+      const price = Math.max(30, Math.floor(rent() * 40 + bps() * 10));
+      if (S.money >= price) {
+        const risk = !S.owned.laudo;
+        opts.push({
+          title: 'Material barato',
+          text: `Um fornecedor oferece tijolo pela metade do preço: ${money(price)} e a equipe rende o dobro por 60s.` + (risk ? ' Mas o material pode causar rachaduras.' : ' Seu laudo garante a qualidade.'),
+          yes: () => {
+            if (S.money < price) { toast('Dinheiro insuficiente.'); return; }
+            S.money -= price;
+            addEffect({ id: 'fornecedor', label: 'Material barato', kind: 'good', dur: 60, bps: 2, desc: 'equipe ×2' });
+            toast('Material comprado: equipe ×2 por 60s!');
+            if (risk && Math.random() < 0.4) EV.pendingCrack = 8 + Math.random() * 10;
+          },
+        });
+      }
+      opts.push({
+        title: 'Hora extra',
+        text: 'A equipe topa fazer hora extra no fim de semana: rende o triplo por 30s, mas depois fica cansada e rende a metade por 30s.',
+        yes: () => {
+          addEffect({ id: 'horaextra', label: 'Hora extra', kind: 'good', dur: 30, bps: 3, desc: 'equipe ×3',
+            then: { id: 'cansada', label: 'Equipe cansada', kind: 'bad', dur: 30, bps: 0.5, desc: 'equipe −50%' } });
+          toast('Hora extra: equipe ×3 por 30s!');
+        },
+      });
+    }
+    if (!opts.length) return null;
+    return opts[Math.floor(Math.random() * opts.length)];
+  }
+
+  const choiceEl = document.getElementById('choice');
+  function openChoice() {
+    const c = makeChoice();
+    if (!c) return;
+    EV.choice = Object.assign(c, { t: 20, dur: 20 });
+    document.getElementById('choice-title').textContent = c.title;
+    document.getElementById('choice-text').textContent = c.text;
+    choiceEl.hidden = false;
+    sfx.crane();
+  }
+  function closeChoice(accept) {
+    const c = EV.choice;
+    if (!c) return;
+    EV.choice = null;
+    choiceEl.hidden = true;
+    S.stats.choices++;
+    if (accept) { c.yes(); sfx.buy(); }
+  }
+  document.getElementById('choice-yes').addEventListener('click', () => closeChoice(true));
+  document.getElementById('choice-no').addEventListener('click', () => closeChoice(false));
+
+  // ---------- Agendador ----------
+  function startBadEvent() {
+    const opts = [];
+    if (!hasEffect('chuva')) opts.push(startRain);
+    if (!EV.crack && !S.owned.laudo && S.floors >= 1) opts.push(spawnCrack);
+    if (!EV.inspector) opts.push(startInspector);
+    if (opts.length) opts[Math.floor(Math.random() * opts.length)]();
+  }
+
+  function updateEvents(dt) {
+    for (let i = EV.effects.length - 1; i >= 0; i--) {
+      const e = EV.effects[i];
+      e.t -= dt;
+      if (e.t <= 0) {
+        EV.effects.splice(i, 1);
+        if (e.then) { addEffect(e.then); toast(`${e.then.label}: ${e.then.desc} por ${e.then.dur}s.`); }
+      }
+    }
+    updateCrane(dt);
+    updateInspector(dt);
+    updateRain(dt);
+    if (EV.choice) {
+      EV.choice.t -= dt;
+      document.getElementById('choice-bar').style.width = Math.max(0, EV.choice.t / EV.choice.dur * 100) + '%';
+      if (EV.choice.t <= 0) closeChoice(false);
+    }
+    if (EV.pendingCrack != null) {
+      EV.pendingCrack -= dt;
+      if (EV.pendingCrack <= 0) { EV.pendingCrack = null; spawnCrack(); }
+    }
+    if (S.floors < 1 || !document.getElementById('offline').hidden) return;
+    EV.nextCrane -= dt;
+    if (EV.nextCrane <= 0 && !EV.crane) { spawnCrane(); EV.nextCrane = rand(50, 110); }
+    EV.nextBad -= dt;
+    if (EV.nextBad <= 0) { startBadEvent(); EV.nextBad = rand(80, 160); }
+    EV.nextChoice -= dt;
+    if (EV.nextChoice <= 0 && !EV.choice) { openChoice(); EV.nextChoice = rand(140, 240); }
+  }
+
+  function resetEvents() {
+    EV.effects.length = 0; EV.crane = null; EV.crack = null; EV.inspector = null; EV.pendingCrack = null;
+    if (EV.choice) { EV.choice = null; choiceEl.hidden = true; }
+    EV.nextCrane = 25; EV.nextBad = 75; EV.nextChoice = 130;
+  }
+
   // ---------- Quadro ----------
   function targetCam() {
     const wallTop0 = GROUND_Y - FOUND_H - WALL_H;
@@ -701,9 +1113,13 @@
     drawBackground(night);
     drawGround(night);
     drawBuilding();
+    drawCrack();
     drawWorkers();
+    drawInspector();
     drawFalling();
+    drawCrane();
     drawParticles();
+    drawRain();
     if (night > 0) {
       ctx.globalAlpha = night * 0.38;
       ctx.fillStyle = '#0a0e2a';
@@ -752,6 +1168,11 @@
     floor: () => { tone(523, 0.12, 'square', 0.05); tone(659, 0.12, 'square', 0.05, 0.1); tone(784, 0.25, 'square', 0.05, 0.2); },
     buy: () => { tone(880, 0.06, 'square', 0.04); tone(1320, 0.1, 'square', 0.04, 0.06); },
     deny: () => tone(110, 0.12, 'sawtooth', 0.04),
+    crane: () => { tone(660, 0.08, 'square', 0.04); tone(990, 0.12, 'square', 0.04, 0.1); },
+    collect: () => { tone(784, 0.07, 'square', 0.04); tone(1047, 0.07, 'square', 0.04, 0.07); tone(1568, 0.15, 'square', 0.04, 0.14); },
+    crack: () => { tone(90, 0.25, 'sawtooth', 0.06); tone(60, 0.3, 'sawtooth', 0.05, 0.08); },
+    fix: () => tone(320 + Math.random() * 60, 0.05, 'triangle', 0.1),
+    whistle: () => { tone(1800, 0.12, 'sine', 0.05); tone(1500, 0.2, 'sine', 0.05, 0.14); },
   };
 
   // ================================================================
@@ -791,7 +1212,7 @@
   function placeBrick(clientX, clientY) {
     S.clicks++;
     const before = visibleCount();
-    const n = perClick();
+    const n = clickPower();
     const done = addBricks(n, true);
     sfx.place();
     if (!done) {
@@ -812,6 +1233,10 @@
   canvas.addEventListener('pointerdown', e => {
     if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+    if (hitCrane(x, y)) { collectCrane(); updateHud(); return; }
+    if (hitCrack(x, y)) { repairCrack(); updateHud(); return; }
     placeBrick(e.clientX, e.clientY);
   });
   canvas.addEventListener('keydown', e => {
@@ -867,8 +1292,9 @@
     S.owned[it.id]++;
     sfx.buy();
     if (it.bps) syncWorkers();
+    if (it.id === 'laudo' && EV.crack) { EV.crack = null; toast('O engenheiro mandou consertar a rachadura.'); }
     if (S.owned[it.id] === 1) {
-      const msgs = { servente: 'O servente chegou na obra!', pedreiro: 'Um pedreiro entrou na equipe!', mestre: 'O mestre de obras assumiu!', janela: 'Primeira janela instalada!', porta: 'Primeira porta instalada!', colher: 'Colher nova: mais tijolos por clique!' };
+      const msgs = { lona: 'Lona pronta: a chuva não atrapalha mais.', epi: 'Equipe equipada: o fiscal vai aprovar!', laudo: 'Laudo emitido: sem rachaduras na obra.', servente: 'O servente chegou na obra!', pedreiro: 'Um pedreiro entrou na equipe!', mestre: 'O mestre de obras assumiu!', janela: 'Primeira janela instalada!', porta: 'Primeira porta instalada!', colher: 'Colher nova: mais tijolos por clique!' };
       toast(msgs[it.id]);
     }
     updateHud(true);
@@ -895,6 +1321,9 @@
       if (mystery) {
         r.costEl.textContent = money(c);
         r.costEl.classList.remove('locked');
+      } else if (atLimit && it.once) {
+        r.costEl.textContent = 'Comprado';
+        r.costEl.classList.add('locked');
       } else if (atLimit) {
         r.costEl.textContent = S.floors === 0 ? 'Termine o 1º pavimento' : `Limite: ${it.limitMsg}`;
         r.costEl.classList.add('locked');
@@ -903,17 +1332,44 @@
         r.costEl.classList.remove('locked');
       }
       r.btn.disabled = mystery || atLimit || S.money < c;
-      r.owned.textContent = S.owned[it.id] > 0 ? S.owned[it.id] : '';
+      r.owned.textContent = S.owned[it.id] > 0 ? (it.once ? '✓' : S.owned[it.id]) : '';
       r.btn.setAttribute('aria-label', mystery ? 'Item desconhecido' : `${it.name}, ${it.desc}, custa ${money(c)}, você tem ${S.owned[it.id]}`);
     }
   }
 
   // ---------- Painel ----------
+  function setStat(id, text, ratio) {
+    const el = $(id);
+    el.textContent = text;
+    el.classList.toggle('up', ratio > 1.001);
+    el.classList.toggle('down', ratio < 0.999);
+  }
+
+  const effectsEl = $('effects');
+  let effectsSig = '';
+  function renderEffects() {
+    const list = EV.effects.map(e => ({ kind: e.kind, text: `${e.label} · ${e.desc} · ${Math.ceil(e.t)}s` }));
+    if (EV.crack) list.push({ kind: 'bad', text: 'Rachadura · aluguel −30% · clique nela' });
+    if (EV.inspector) list.push({ kind: S.owned.epi ? 'good' : 'bad', text: 'Fiscal vistoriando a obra' });
+    const sig = list.map(c => c.kind + c.text).join('|');
+    if (sig === effectsSig) return;
+    effectsSig = sig;
+    effectsEl.textContent = '';
+    for (const c of list) {
+      const el = document.createElement('span');
+      el.className = 'chip ' + c.kind;
+      el.textContent = c.text;
+      effectsEl.appendChild(el);
+    }
+    effectsEl.hidden = list.length === 0;
+  }
+
   function updateHud() {
     $('st-money').textContent = money(S.money);
-    $('st-rent').textContent = money(rent()) + '/s';
-    $('st-bps').textContent = fmt(bps());
-    $('st-click').textContent = fmt(perClick());
+    setStat('st-rent', money(rentNow()) + '/s', rentNow() / (rent() || 1));
+    setStat('st-bps', fmt(bpsNow()), bpsNow() / (bps() || 1));
+    setStat('st-click', fmt(clickPower()), effMult('click'));
+    renderEffects();
     const nd = need(S.floors);
     $('pv-name').textContent = ordinal(S.floors + 1) + ' pavimento';
     $('pv-count').textContent = `${fmt(Math.floor(S.bricks))} / ${fmt(nd)} tijolos`;
@@ -945,6 +1401,7 @@
       const muted = S.muted;
       S = fresh(); S.muted = muted;
       workers.length = 0; falling.length = 0; inflight.clear(); particles.length = 0;
+      resetEvents();
       camY = 0; hintEl.hidden = false;
       for (const id in rows) rows[id].mystery = null;
       save(); updateHud(); showResetIdle();
@@ -971,7 +1428,7 @@
     try {
       const d = JSON.parse(raw);
       const base = fresh();
-      S = Object.assign(base, d, { owned: Object.assign(base.owned, d.owned || {}), seen: d.seen || {} });
+      S = Object.assign(base, d, { owned: Object.assign(base.owned, d.owned || {}), stats: Object.assign(base.stats, d.stats || {}), seen: d.seen || {} });
     } catch (e) { S = fresh(); }
   }
 
@@ -1005,10 +1462,12 @@
     dt = Math.min(dt, 0.1);
 
     if (dt > 0) {
-      const b = bps();
+      const b = bpsNow();
       if (b > 0) addBricks(b * dt, true);
-      addMoney(rent() * dt);
+      addMoney(rentNow() * dt);
     }
+    updateEvents(dt);
+    for (const c of clouds) { c.x += c.sp * dt; if (c.x > W + 10) c.x = -c.w - 10; }
 
     dayTime += dt;
     camY += (targetCam() - camY) * Math.min(1, dt * 4);

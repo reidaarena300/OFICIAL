@@ -10,6 +10,7 @@
   --brick: #c8553d;
   --gold: #f2c14e;
   --ok: #7cc35e;
+  --danger: #ff6b55;
   --font-display: "Press Start 2P", "Courier New", monospace;
   --font-body: "VT323", "Courier New", monospace;
   color-scheme: dark;
@@ -170,6 +171,68 @@ button:focus-visible, canvas:focus-visible {
 }
 
 .float.money { color: var(--gold); font-size: 14px; }
+.float.bad { color: var(--danger); font-size: 14px; }
+
+.stat .value.up { color: var(--ok); }
+.stat .value.down { color: var(--danger); }
+
+/* ---------- Efeitos ativos ---------- */
+.effects {
+  width: min(100%, 520px);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 4px 8px;
+  font-size: 18px;
+  background: var(--panel);
+  box-shadow: 0 0 0 2px var(--line);
+}
+
+.chip.good { box-shadow: 0 0 0 2px var(--ok); color: var(--ok); }
+.chip.bad { box-shadow: 0 0 0 2px var(--danger); color: var(--danger); }
+.chip.neutral { color: var(--muted); }
+
+/* ---------- Cartão de escolha ---------- */
+.choice {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--shadow);
+  box-shadow: 0 0 0 2px var(--gold), 4px 4px 0 2px rgba(0, 0, 0, 0.5);
+}
+
+.choice-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--gold);
+}
+
+.choice-text { margin: 0; font-size: 19px; }
+
+.choice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.choice-actions button {
+  padding: 8px 12px;
+  border: 0;
+  font-family: var(--font-display);
+  font-size: 9px;
+}
+
+#choice-yes { background: var(--gold); color: var(--shadow); box-shadow: 3px 3px 0 var(--line); }
+#choice-no { background: var(--panel-2); box-shadow: 0 0 0 2px var(--line); }
+
+.choice-timer { height: 4px; background: var(--panel-2); }
+#choice-bar { height: 100%; width: 100%; background: var(--gold); }
 
 @keyframes rise {
   from { opacity: 1; margin-top: 0; }
