@@ -126,18 +126,26 @@ button:focus-visible, canvas:focus-visible { outline: 3px solid var(--gold); out
 
 .float {
   position: absolute;
-  transform: translate(-50%, -50%);
+  left: 0;
+  top: 0;
   font-family: var(--font-display);
   font-size: 12px;
   color: var(--ink);
   text-shadow: 2px 2px 0 var(--shadow);
   white-space: nowrap;
-  animation: rise 0.9s steps(9) forwards;
+  will-change: transform, opacity;
+  animation: rise 0.85s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
 }
 .float.money { color: var(--gold); font-size: 14px; }
 .float.bad { color: var(--danger); font-size: 14px; }
 
-@keyframes rise { from { opacity: 1; margin-top: 0; } to { opacity: 0; margin-top: -48px; } }
+@keyframes rise {
+  0% { opacity: 1; transform: translate(var(--x), var(--y)) translate(-50%, -50%) scale(1.25); }
+  20% { transform: translate(var(--x), var(--y)) translate(-50%, calc(-50% - 10px)) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) translate(-50%, calc(-50% - 52px)) scale(0.9); }
+}
+.float.combo-hot { color: var(--gold); }
 
 .hint {
   position: absolute;
@@ -378,4 +386,95 @@ button:focus-visible, canvas:focus-visible { outline: 3px solid var(--gold); out
 @media (prefers-reduced-motion: reduce) {
   .float, .toast { animation-duration: 0.01s; }
   .hint { animation: none; }
+}
+
+/* ---------- v1.1: combo, melhorias, benefícios, tutorial ---------- */
+.combo {
+  position: absolute;
+  left: 8px;
+  top: 38%;
+  display: grid;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(18, 12, 9, 0.75);
+  box-shadow: 0 0 0 2px var(--gold);
+  pointer-events: none;
+}
+.combo-n { font-family: var(--font-display); font-size: 8px; color: var(--muted); }
+.combo-x { font-family: var(--font-display); font-size: 14px; color: var(--gold); }
+.combo.hot .combo-x { color: var(--danger); }
+.combo-bar { width: 72px; height: 4px; background: var(--panel-2); }
+#combo-fill { height: 100%; width: 0; background: var(--gold); }
+
+.tabs button { font-size: 8px; padding-inline: 4px; white-space: nowrap; }
+.badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 2px;
+  padding: 2px 3px;
+  background: var(--gold);
+  color: var(--shadow);
+  font-size: 8px;
+  vertical-align: 1px;
+}
+.upg-shortcut {
+  padding: 8px 10px;
+  border: 0;
+  text-align: left;
+  background: var(--shadow);
+  box-shadow: 0 0 0 2px var(--gold);
+  color: var(--gold);
+  font-size: 18px;
+}
+.upgrades.owned .upg { opacity: 0.85; cursor: default; }
+.link-btn { align-self: flex-start; margin-top: 8px; padding: 6px 10px; border: 0; background: var(--panel-2); box-shadow: 0 0 0 2px var(--line); font-size: 18px; }
+
+.chip.perk { box-shadow: 0 0 0 2px var(--gold); color: var(--gold); }
+
+.perk-box { width: min(100%, 640px); }
+.perk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.perk-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px;
+  border: 0;
+  text-align: left;
+  background: var(--panel-2);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.perk-card:disabled { opacity: 0.55; cursor: wait; }
+.perk-card:hover:not(:disabled), .perk-card:focus-visible { box-shadow: 0 0 0 2px var(--gold); transform: translateY(-2px); }
+.perk-card strong { font-family: var(--font-display); font-size: 10px; font-weight: 400; line-height: 1.5; color: var(--gold); }
+.perk-card span { font-size: 19px; }
+.perk-icon { width: 48px; height: 48px; image-rendering: pixelated; }
+
+.coach {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(calc(100% - 32px), 460px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  box-shadow: 0 0 0 3px var(--gold), 8px 8px 0 3px var(--shadow);
+  z-index: 30;
+}
+.coach p { margin: 0; }
+.coach-step { font-family: var(--font-display); font-size: 8px; color: var(--muted); }
+.coach-text { font-size: 20px; }
+.coach-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.coach-actions button { padding: 8px 12px; border: 0; background: var(--panel-2); box-shadow: 0 0 0 2px var(--line); font-size: 18px; }
+.coach-actions .cta { background: var(--gold); color: var(--shadow); font-family: var(--font-display); font-size: 9px; box-shadow: 3px 3px 0 var(--shadow); }
+.coach-actions .cta:disabled { opacity: 0.6; cursor: not-allowed; }
+.coach-target { position: relative; z-index: 25; outline: 3px solid var(--gold); outline-offset: 3px; animation: coach-pulse 1s ease-in-out infinite; }
+@keyframes coach-pulse { 50% { outline-color: var(--ink); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-target { animation: none; }
+  .float { animation-duration: 0.3s; }
 }

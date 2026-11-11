@@ -1,4 +1,4 @@
-/* Tijolo Clicker v1.0 — lógica do jogo, eventos, interface e salvamento. */
+/* Tijolo Clicker v1.1 — lógica do jogo, eventos, interface e salvamento. */
 (() => {
   'use strict';
 
@@ -18,7 +18,7 @@
   // ================================================================
   const G = {
     S: TC.freshState(),
-    EV: { effects: [], crane: null, crack: null, inspector: null, choice: null, pendingCrack: null, nextCrane: 25, nextBad: 75, nextChoice: 130 },
+    EV: { effects: [], crane: null, crack: null, inspector: null, choice: null, pendingCrack: null, gold: null, nextCrane: 25, nextBad: 75, nextChoice: 130, nextGold: 18 },
   };
   let S = G.S;
   const EV = G.EV;
@@ -29,6 +29,12 @@
   const clickNow = () => TC.clickPower(S, bpsNow()) * effMult('click');
   const rentNow = () => TC.rent(S) * effMult('rent') * (EV.crack ? 0.7 : 1);
   const hasEffect = id => EV.effects.some(e => e.id === id);
+  const perk = (key, def) => TC.perkVal(S, key, def);
+
+  // Combo de cliques: clicar rápido aumenta o multiplicador
+  const combo = { n: 0, idle: 9 };
+  const comboMax = () => perk('comboMax', 2.5);
+  const comboMult = () => 1 + (comboMax() - 1) * Math.min(combo.n, 50) / 50;
 
   // ================================================================
   // Mundo
@@ -74,13 +80,15 @@
   const fxEl = $('fx'), hintEl = $('hint'), toastsEl = $('toasts');
 
   function floatText(text, x, y, cls = '') {
+    while (fxEl.childElementCount >= 24) fxEl.firstChild.remove();
     const el = document.createElement('span');
     el.className = 'float ' + cls;
     el.textContent = text;
-    el.style.left = (x / W * 100) + '%';
-    el.style.top = (y / H * 100) + '%';
+    el.style.setProperty('--x', (x / W * fxEl.clientWidth + (Math.random() - 0.5) * 36).toFixed(1) + 'px');
+    el.style.setProperty('--y', (y / H * fxEl.clientHeight + (Math.random() - 0.5) * 14).toFixed(1) + 'px');
+    el.addEventListener('animationend', () => el.remove());
     fxEl.appendChild(el);
-    setTimeout(() => el.remove(), 950);
+    setTimeout(() => el.remove(), 1500);
   }
 
   function toast(text, kind = '') {
@@ -111,18 +119,22 @@
         } else {
           toast(r.done > 1 ? `${r.done} pavimentos concluídos!` : `${ordinal(S.floors)} pavimento concluído!`);
         }
-        if (before === 0 && S.stars === 0 && S.project === 0) toast('Agora você recebe aluguel. Veja os acabamentos na loja!');
       }
+      if (before === 0 && S.floors >= 1 && S.tut === 0) startTutorial();
+      maybeOfferPerk();
     }
     return r;
   }
 
   function placeBrick(clientX, clientY) {
     S.clicks++;
+    combo.n = combo.idle < 0.9 ? combo.n + 1 : Math.max(1, Math.floor(combo.n * 0.5));
+    combo.idle = 0;
+    if (combo.n > S.stats.bestCombo) S.stats.bestCombo = combo.n;
     const before = world.visibleCount();
-    const n = clickNow();
+    const n = clickNow() * comboMult();
     const r = giveBricks(n, true);
-    sfx.place();
+    tone(150 + Math.min(combo.n, 50) * 6 + Math.random() * 40, 0.06, 'triangle', 0.12);
     if (!r.done) {
       const after = world.visibleCount();
       for (let k = before; k < after && k < before + 5; k++) world.spawnFalling(k);
@@ -133,7 +145,9 @@
       x = (clientX - rc.left) / rc.width * W;
       y = (clientY - rc.top) / rc.height * H;
     }
-    floatText('+' + fmt(n), x, y);
+    const hot = combo.n >= 10;
+    floatText('+' + fmt(n), x, y, hot ? 'combo-hot' : '');
+    world.ring(x, y, hot);
     if (S.clicks >= 12) hintEl.hidden = true;
   }
 
@@ -142,6 +156,7 @@
     e.preventDefault();
     const rc = canvas.getBoundingClientRect();
     const x = (e.clientX - rc.left) / rc.width * W, y = (e.clientY - rc.top) / rc.height * H;
+    if (world.hitGold(x, y)) { collectGold(); return; }
     if (world.hitPallet(x, y)) { collectPallet(); return; }
     if (world.hitCrack(x, y)) { repairCrack(); return; }
     placeBrick(e.clientX, e.clientY);
@@ -184,13 +199,14 @@
     sfx.collect();
     world.dust(cx, c.y + 10, 14, ['#f2c14e', '#fff0a6', '#ffffff']);
     const r = Math.random();
+    const boost = perk('crane');
     if (r < 0.45) {
-      const n = Math.ceil(Math.max(30 * clickNow(), 60 * TC.bps(S)));
+      const n = Math.ceil(Math.max(30 * clickNow(), 60 * TC.bps(S)) * boost);
       giveBricks(n, true);
       floatText('+' + fmt(n) + ' tijolos', cx, c.y + 12, 'money');
       toast(`Entrega de material: +${fmt(n)} tijolos!`);
     } else if (r < 0.75) {
-      const m = Math.ceil(Math.max(30 + 15 * S.floors, 90 * TC.rent(S), S.money * 0.05));
+      const m = Math.ceil(Math.max(30 + 15 * S.floors, 90 * TC.rent(S), S.money * 0.05) * boost);
       TC.addMoney(S, m);
       floatText('+' + money(m), cx, c.y + 12, 'money');
       toast(`Material revendido: +${money(m)}!`);
@@ -202,6 +218,38 @@
       addEffect({ id: 'mutirao', label: 'Mutirão', kind: 'good', dur: 30, bps: 4, desc: 'equipe ×4' });
       floatText('Equipe ×4!', cx, c.y + 12, 'money');
       toast('Mutirão da vizinhança: equipe ×4 por 30s!');
+    }
+  }
+
+  // Tijolo de ouro: aparece na parede em construção; clique nele antes que suma
+  function spawnGold() {
+    const k = world.goldSpot();
+    if (k < 0) return;
+    EV.gold = { k, t: 0, life: 9 };
+    tone(1568, 0.08, 'sine', 0.04); tone(2093, 0.12, 'sine', 0.04, 0.08);
+    if (!S.stats.golden) toast('Um tijolo de ouro brilha na parede! Clique nele!');
+  }
+
+  function collectGold() {
+    const p = world.goldPos();
+    EV.gold = null;
+    S.stats.golden++;
+    const boost = perk('gold');
+    sfx.collect();
+    world.dust(p.x + 4, p.y + 2, 18, ['#f2c14e', '#fff0a6', '#ffffff', '#c9952a']);
+    const r = Math.random();
+    if (r < 0.5) {
+      const n = Math.ceil(Math.max(40 * clickNow(), 90 * TC.bps(S)) * boost);
+      giveBricks(n, true);
+      floatText('+' + fmt(n) + ' tijolos', p.x + 4, p.y - 6, 'money');
+    } else if (r < 0.8) {
+      const m = Math.ceil(Math.max(50 + 20 * S.floors, 120 * TC.rent(S), S.money * 0.08) * boost);
+      TC.addMoney(S, m);
+      floatText('+' + money(m), p.x + 4, p.y - 6, 'money');
+    } else {
+      addEffect({ id: 'febre', label: 'Febre do ouro', kind: 'good', dur: 12 * boost, click: 10, desc: 'cliques ×10' });
+      floatText('Cliques ×10!', p.x + 4, p.y - 6, 'money');
+      toast('Febre do ouro: cliques ×10!');
     }
   }
 
@@ -282,7 +330,7 @@
   function makeChoice() {
     const opts = [];
     const P = TC.project(S);
-    if (S.floors < P.floors && S.bricks > TC.need(S.floors) * 0.3) {
+    if (S.floors < P.floors && S.bricks > TC.needFor(S, S.floors) * 0.3) {
       const pay = TC.reward(S.floors) * 2;
       opts.push({
         title: 'Mudança de planta',
@@ -356,6 +404,7 @@
   $('choice-no').addEventListener('click', () => closeChoice(false));
 
   function startBadEvent() {
+    if (perk('immune', 0)) return;
     const opts = [];
     if (!hasEffect('chuva')) opts.push(startRain);
     if (!EV.crack && !S.owned.laudo && S.floors >= 1) opts.push(spawnCrack);
@@ -380,8 +429,11 @@
       if (EV.choice.t <= 0) closeChoice(false);
     }
     if (EV.pendingCrack != null) { EV.pendingCrack -= dt; if (EV.pendingCrack <= 0) { EV.pendingCrack = null; spawnCrack(); } }
-    if (S.floors < 1 || !$('offline').hidden) return;
-    EV.nextCrane -= dt;
+    if (EV.gold) { EV.gold.t += dt; if (EV.gold.t > EV.gold.life || EV.gold.k >= world.visibleCount()) EV.gold = null; }
+    if (S.floors < 1 || !$('offline').hidden || !$('perk-modal').hidden) return;
+    EV.nextGold -= dt * perk('gold');
+    if (EV.nextGold <= 0 && !EV.gold) { spawnGold(); EV.nextGold = rand(25, 60); }
+    EV.nextCrane -= dt * perk('crane');
     if (EV.nextCrane <= 0 && !EV.crane) { spawnPallet(); EV.nextCrane = rand(45, 100); }
     EV.nextBad -= dt;
     if (EV.nextBad <= 0) { startBadEvent(); EV.nextBad = rand(80, 160); }
@@ -390,7 +442,7 @@
   }
 
   function resetEvents() {
-    EV.effects.length = 0; EV.crane = null; EV.crack = null; EV.inspector = null; EV.pendingCrack = null;
+    EV.effects.length = 0; EV.crane = null; EV.crack = null; EV.inspector = null; EV.pendingCrack = null; EV.gold = null; EV.nextGold = 18;
     if (EV.choice) { EV.choice = null; choiceEl.hidden = true; }
     EV.nextCrane = 25; EV.nextBad = 75; EV.nextChoice = 130;
   }
@@ -452,6 +504,7 @@
     if (!n || S.money < cost) { sfx.deny(); return; }
     S.money -= cost;
     S.owned[p.id] += n;
+    TC.dirty();
     sfx.buy();
     if (S.owned[p.id] === n) toast(`${p.name} entrou na obra!`);
     refreshShop();
@@ -463,6 +516,7 @@
     if (!n || S.money < cost) { sfx.deny(); return; }
     S.money -= cost;
     S.owned[f.id] += n;
+    TC.dirty();
     sfx.buy();
     refreshShop();
   }
@@ -483,6 +537,7 @@
     if (S.money < u.cost) { sfx.deny(); showUpgDetail(u); return; }
     S.money -= u.cost;
     S.upg[u.id] = true;
+    TC.dirty();
     sfx.buy();
     toast(`Melhoria: ${u.name}!`);
     shop.selectedUpg = null;
@@ -531,12 +586,42 @@
       $('upg-empty').hidden = avail.length > 0;
       if (shop.selectedUpg && !avail.includes(shop.selectedUpg)) shop.selectedUpg = null;
     }
+    let can = 0;
     for (const u of avail) {
+      const ok = S.money >= u.cost;
+      if (ok) can++;
       const b = shop.upgTiles.get(u.id);
-      if (b) b.classList.toggle('can', S.money >= u.cost);
+      if (b) b.classList.toggle('can', ok);
     }
-    showUpgDetail(shop.selectedUpg);
+    const badge = $('upg-badge');
+    badge.hidden = can === 0;
+    if (badge.textContent !== String(can)) badge.textContent = String(can);
+    const sc = $('upg-shortcut');
+    sc.hidden = can === 0;
+    const scText = `${can} melhoria${can > 1 ? 's' : ''} pronta${can > 1 ? 's' : ''} para comprar → abrir Melhorias`;
+    if (sc.textContent !== scText) sc.textContent = scText;
+    if (!$('tab-melhorias').hidden) { showUpgDetail(shop.selectedUpg); renderOwnedUpgrades(); }
   }
+
+  function renderOwnedUpgrades() {
+    const box = $('upg-owned');
+    const owned = TC.UPGRADES.filter(u => S.upg[u.id]);
+    const sig = owned.map(u => u.id).join(',');
+    if (box.dataset.sig === sig) return;
+    box.dataset.sig = sig;
+    box.textContent = '';
+    $('upg-owned-count').textContent = `(${owned.length})`;
+    for (const u of owned) {
+      const b = document.createElement('span');
+      b.className = 'upg';
+      b.title = `${u.name}: ${u.desc}`;
+      b.setAttribute('role', 'img');
+      b.setAttribute('aria-label', `${u.name}: ${u.desc}`);
+      b.appendChild(ART.makeIcon(upgIconKey(u), u.kind === 'prod' || u.kind === 'ritmo' ? u.tier : null, 'upg-icon'));
+      box.appendChild(b);
+    }
+  }
+  $('upg-shortcut').addEventListener('click', () => showTab('melhorias'));
 
   function refreshShop() {
     const totalBps = TC.bps(S) || 1;
@@ -552,7 +637,7 @@
         mysteryShown = true;
         continue;
       }
-      const each = p.bps * TC.prodMult(S, p.id) * TC.globalMult(S);
+      const each = TC.prodEach(S, p);
       const tot = TC.prodBps(S, p);
       const share = S.owned[p.id] ? ` · ${Math.round(tot / totalBps * 100)}% do total` : '';
       setRow(r, {
@@ -595,7 +680,7 @@
   // ================================================================
   // Abas
   // ================================================================
-  const tabs = ['loja', 'conquistas', 'obra'];
+  const tabs = ['loja', 'melhorias', 'conquistas', 'obra'];
   function showTab(id) {
     tabs.forEach(t => {
       $('tab-' + t).hidden = t !== id;
@@ -604,6 +689,7 @@
       b.tabIndex = t === id ? 0 : -1;
     });
     if (id === 'conquistas') renderAchievements(true);
+    if (id === 'melhorias') { showUpgDetail(shop.selectedUpg); renderOwnedUpgrades(); }
     if (id === 'obra') renderProjectTab();
   }
   tabs.forEach(t => $('tabbtn-' + t).addEventListener('click', () => showTab(t)));
@@ -633,6 +719,7 @@
     for (const a of TC.ACHIEVEMENTS) {
       if (!S.ach[a.id] && a.test(S)) {
         S.ach[a.id] = true;
+        TC.dirty();
         toast(`Conquista: ${a.name}!`, 'ach');
         sfx.ach();
       }
@@ -672,6 +759,9 @@
       ['Rachaduras consertadas', fmt(S.stats.cracks)],
       ['Vistorias aprovadas / multas', `${S.stats.approved} / ${S.stats.fines}`],
       ['Propostas respondidas', fmt(S.stats.choices)],
+      ['Tijolos de ouro pegos', fmt(S.stats.golden)],
+      ['Maior combo', fmt(S.stats.bestCombo)],
+      ['Benefícios escolhidos', fmt(S.stats.perks)],
     ];
     const dl = $('stats-list');
     dl.textContent = '';
@@ -698,7 +788,9 @@
     if (!done) return;
     const lastIdx = TC.PROJECTS.length - 1;
     const next = S.project >= lastIdx ? `Torre recorde com ${P.floors + 5} andares` : TC.PROJECTS[S.project + 1].name;
-    const txt = `${P.name} pronta! Entregue para ganhar +${TC.deliveryStars(S)} ★ de Reputação e começar a próxima obra: ${next}. Você recomeça do zero, mas cada estrela dá +5% em tudo, para sempre.`;
+    const crew = TC.PRODUCERS.filter(p => S.owned[p.id] > 0).map(p => p.name.toLowerCase());
+    const crewTxt = crew.length ? ` Equipe fiel: 1 ${crew.join(', 1 ')} ${crew.length > 1 ? 'vão' : 'vai'} com você.` : '';
+    const txt = `${P.name} pronta! Entregue para ganhar +${TC.deliveryStars(S)} ★ de Reputação e começar a próxima obra: ${next}. Dinheiro, melhorias e acabamentos recomeçam do zero, mas cada estrela dá +5% em tudo, para sempre.${crewTxt}`;
     if ($('deliver-text').textContent !== txt) $('deliver-text').textContent = txt;
   }
 
@@ -728,13 +820,15 @@
     S.delivered[P.id] = (S.delivered[P.id] || 0) + 1;
     S.stars += stars;
     S.project = Math.min(S.project + 1, TC.PROJECTS.length - 1);
-    TC.newRun(S);
+    const kept = TC.newRun(S);
     resetEvents();
     world.reset();
     checkAchievements();
     const N = TC.project(S);
     sfx.deliver();
     toast(`Obra entregue! +${stars} ★. Nova obra: ${N.name}${N.record ? ` com ${N.floors} andares` : ''}.`, 'big');
+    const nk = Object.keys(kept).length;
+    if (nk) toast(`Sua equipe fiel chegou: ${nk} membro${nk > 1 ? 's' : ''} já começa${nk > 1 ? 'm' : ''} trabalhando.`);
     showDeliverIdle();
     save();
     refreshShop();
@@ -757,6 +851,7 @@
     const list = EV.effects.map(e => ({ kind: e.kind, text: `${e.label} · ${e.desc} · ${Math.ceil(e.t)}s` }));
     if (EV.crack) list.push({ kind: 'bad', text: 'Rachadura · aluguel −30% · clique nela' });
     if (EV.inspector) list.push({ kind: S.owned.epi ? 'good' : 'bad', text: 'Fiscal vistoriando a obra' });
+    for (const id in S.perks) { const pk = TC.PERK_BY_ID[id]; if (pk && !pk.instant) list.push({ kind: 'perk', text: pk.name }); }
     const sig = list.map(c => c.kind + c.text).join('|');
     if (sig === effectsSig) return;
     effectsSig = sig;
@@ -778,7 +873,7 @@
     if ($('pj-name').textContent !== pj) $('pj-name').textContent = pj;
     const done = S.floors >= P.floors;
     $('pv-name').textContent = done ? 'Obra concluída' : `${ordinal(S.floors + 1)} de ${P.floors} pavimentos`;
-    const nd = TC.need(Math.min(S.floors, P.floors - 1));
+    const nd = TC.needFor(S, Math.min(S.floors, P.floors - 1));
     $('pv-count').textContent = done ? `${P.floors} / ${P.floors}` : `${fmt(Math.floor(S.bricks))} / ${fmt(nd)} tijolos`;
     $('pv-fill').style.width = (done ? 100 : Math.min(100, S.bricks / nd * 100)) + '%';
     renderEffects();
@@ -808,6 +903,7 @@
     yes.addEventListener('click', () => {
       const muted = S.muted;
       G.S = S = TC.freshState(); S.muted = muted;
+      TC.dirty(); endTutorial(false); $('perk-modal').hidden = true;
       resetEvents(); world.reset(); hintEl.hidden = false;
       save(); refreshShop(); showResetIdle(); showTab('loja');
       toast('Progresso apagado. Obra nova começando!');
@@ -817,6 +913,138 @@
     no.focus();
   }
   showResetIdle();
+
+  // ================================================================
+  // Combo (mostrador)
+  // ================================================================
+  const comboEl = $('combo');
+  function updateCombo() {
+    const show = combo.n >= 3;
+    comboEl.hidden = !show;
+    if (!show) return;
+    const n = Math.floor(combo.n);
+    $('combo-n').textContent = `Combo ${n}`;
+    $('combo-x').textContent = '×' + comboMult().toFixed(1).replace('.', ',');
+    $('combo-fill').style.width = Math.min(100, n / 50 * 100) + '%';
+    comboEl.classList.toggle('hot', n >= 50);
+  }
+
+  // ================================================================
+  // Benefícios da obra (escolha 1 de 3)
+  // ================================================================
+  function maybeOfferPerk() {
+    const P = TC.project(S);
+    if (S.perkOffer || S.floors <= 0 || S.floors >= P.floors) return;
+    if (S.floors % TC.perkEvery(P) !== 0 || S.perkAt === S.floors) return;
+    const pool = TC.PERKS.filter(p => !S.perks[p.id]);
+    if (pool.length < 3) return;
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    S.perkAt = S.floors;
+    S.perkOffer = pool.slice(0, 3).map(p => p.id);
+    openPerkModal();
+  }
+
+  function openPerkModal() {
+    if (S.tut > 0 && S.tut < 99) return; // espera o tutorial terminar
+    const box = $('perk-cards');
+    box.textContent = '';
+    for (const id of S.perkOffer) {
+      const pk = TC.PERK_BY_ID[id];
+      if (!pk) continue;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'perk-card';
+      b.appendChild(ART.makeIcon(pk.icon, null, 'perk-icon'));
+      const n = document.createElement('strong'); n.textContent = pk.name;
+      const d = document.createElement('span'); d.textContent = pk.desc;
+      b.append(n, d);
+      b.addEventListener('click', () => choosePerk(pk));
+      box.appendChild(b);
+    }
+    $('perk-modal').hidden = false;
+    sfx.crane();
+    // evita escolher sem querer quando a janela abre embaixo do dedo durante os cliques
+    const cards = [...box.querySelectorAll('button')];
+    cards.forEach(c => { c.disabled = true; });
+    setTimeout(() => { cards.forEach(c => { c.disabled = false; }); if (cards[0]) cards[0].focus(); }, 700);
+  }
+
+  function choosePerk(pk) {
+    S.perks[pk.id] = 1;
+    S.perkOffer = null;
+    S.stats.perks++;
+    TC.dirty();
+    $('perk-modal').hidden = true;
+    sfx.ach();
+    if (pk.instant) {
+      const m = TC.reward(Math.min(S.floors, TC.project(S).floors - 1)) * 5;
+      TC.addMoney(S, m);
+      toast(`${pk.name}: +${money(m)}!`);
+    } else {
+      toast(`Benefício da obra: ${pk.name}!`);
+    }
+    refreshShop();
+    canvas.focus();
+  }
+
+  // ================================================================
+  // Tutorial (aparece depois do 1º pavimento)
+  // ================================================================
+  const TUT = [
+    { target: '#st-rent', text: 'Primeiro pavimento pronto! Cada pavimento paga na hora e passa a render aluguel por segundo, até com o jogo fechado.' },
+    { target: '#producers .item', tab: 'loja', text: 'Contrate um Servente: ele assenta tijolos sozinho, mesmo quando você não clica. Compre 1 para continuar.', wait: () => S.owned.servente >= 1, waitLabel: 'Compre 1 Servente' },
+    { target: '#finishes', tab: 'loja', text: 'Acabamentos aumentam o aluguel e aparecem desenhados no prédio. Janelas são um ótimo começo.' },
+    { target: '#tabbtn-melhorias', text: 'As melhorias ficam nesta aba e dobram a produção. O número amarelo mostra quantas você já pode comprar.' },
+    { target: '#screen', text: 'Clique rápido para fazer combo: o multiplicador sobe até ×2,5. Fique de olho no tijolo de ouro brilhando na parede e nos paletes que descem: clique neles para ganhar prêmios!' },
+    { target: '#progress', text: 'Em alguns andares você escolhe um benefício para a obra. Ao terminar todos os andares, entregue a obra para ganhar Reputação: 1 de cada operário vai junto para a próxima.', last: true },
+  ];
+  let tutTarget = null;
+
+  function startTutorial() { S.tut = 1; showTutorialStep(); }
+
+  function showTutorialStep() {
+    const st = TUT[S.tut - 1];
+    if (!st) { endTutorial(true); return; }
+    if (st.tab) showTab(st.tab);
+    if (tutTarget) tutTarget.classList.remove('coach-target');
+    tutTarget = document.querySelector(st.target);
+    if (tutTarget) {
+      tutTarget.classList.add('coach-target');
+      tutTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    $('coach-step').textContent = `Tutorial ${S.tut} de ${TUT.length}`;
+    $('coach-text').textContent = st.text;
+    $('coach').hidden = false;
+    updateTutorial();
+  }
+
+  function updateTutorial() {
+    const st = TUT[S.tut - 1];
+    if (!st) return;
+    const next = $('coach-next');
+    const waiting = st.wait && !st.wait();
+    next.disabled = !!waiting;
+    const label = waiting ? st.waitLabel : st.last ? 'Bora construir!' : 'Próximo';
+    if (next.textContent !== label) next.textContent = label;
+  }
+
+  function endTutorial(done) {
+    if (tutTarget) tutTarget.classList.remove('coach-target');
+    tutTarget = null;
+    $('coach').hidden = true;
+    if (done) {
+      S.tut = 99;
+      if (S.perkOffer) openPerkModal(); else maybeOfferPerk();
+    }
+  }
+
+  $('coach-next').addEventListener('click', () => {
+    const st = TUT[S.tut - 1];
+    if (st && st.wait && !st.wait()) return;
+    S.tut++;
+    if (S.tut > TUT.length) { endTutorial(true); toast('Boa obra!'); } else showTutorialStep();
+  });
+  $('coach-skip').addEventListener('click', () => endTutorial(true));
+  $('btn-tutorial').addEventListener('click', () => { S.tut = 1; showTutorialStep(); });
 
   // ================================================================
   // Salvar / carregar
@@ -836,8 +1064,10 @@
         G.S = S = Object.assign(base, d, {
           owned: Object.assign(base.owned, d.owned || {}),
           stats: Object.assign(base.stats, d.stats || {}),
-          upg: d.upg || {}, ach: d.ach || {}, delivered: d.delivered || {}, seen: d.seen || {},
+          upg: d.upg || {}, ach: d.ach || {}, delivered: d.delivered || {}, seen: d.seen || {}, perks: d.perks || {},
         });
+        // quem já jogava antes da v1.1 não precisa do tutorial
+        if (d.tut == null) S.tut = (S.floors > 0 || S.stars > 0 || S.project > 0) ? 99 : 0;
       } catch (e) { G.S = S = TC.freshState(); }
       return null;
     }
@@ -847,6 +1077,7 @@
         const d = JSON.parse(old);
         const bonus = Math.max(1, Math.min(5, Math.floor((d.floors || 0) / 5) + 1));
         S.stars = bonus;
+        S.tut = 99;
         S.muted = !!d.muted;
         return bonus;
       } catch (e) { return null; }
@@ -895,10 +1126,12 @@
       TC.addMoney(S, rentNow() * dt);
       updateEvents(dt);
     }
+    combo.idle += dt;
+    if (combo.idle > 0.9 && combo.n > 0) combo.n = Math.max(0, combo.n - dt * 30);
     world.render(dt);
 
     hudT += dt; shopT += dt; saveT += dt; achT += dt;
-    if (hudT > 0.1) { hudT = 0; updateHud(); }
+    if (hudT > 0.1) { hudT = 0; updateHud(); updateCombo(); if (S.tut > 0 && S.tut < 99) updateTutorial(); }
     if (shopT > 0.25) { shopT = 0; refreshShop(); }
     if (achT > 1) { achT = 0; checkAchievements(); if (!$('tab-conquistas').hidden) renderAchievements(); }
     if (saveT > 10) { saveT = 0; save(); }
@@ -915,6 +1148,7 @@
     ART.paintIcon($('logo-icon'), 'tijolo');
     ART.paintIcon($('star-icon'), 'estrela');
     const veteran = load();
+    TC.dirty();
     buildShop();
     updateSoundBtn();
     showDeliverIdle();
@@ -925,7 +1159,9 @@
     world.snapCamera();
     updateHud();
     refreshShop();
-    if (veteran) toast(`Bem-vindo à v1.0! Bônus de veterano: +${veteran} ★ de Reputação.`, 'big');
+    if (veteran) toast(`Bem-vindo! Bônus de veterano: +${veteran} ★ de Reputação.`, 'big');
+    if (S.perkOffer) openPerkModal(); else maybeOfferPerk();
+    if (S.tut > 0 && S.tut < 99) showTutorialStep();
     save();
     requestAnimationFrame(t => { last = t; frame(t); });
   }

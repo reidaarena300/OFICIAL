@@ -104,6 +104,34 @@
   ];
 
   // ---------------------------------------------------------------
+  // Benefícios da obra: em alguns andares você escolhe 1 entre 3 (valem só nesta obra)
+  // ---------------------------------------------------------------
+  const PERKS = [
+    { id: 'mao',       name: 'Mão firme',              desc: 'Cliques ×3.',                                         icon: 'click-0',   click: 3 },
+    { id: 'turno',     name: 'Turno da noite',         desc: 'Equipe e máquinas +50%.',                             icon: 'mestre',    bps: 1.5 },
+    { id: 'vip',       name: 'Inquilinos VIP',         desc: 'Aluguel ×2.',                                         icon: 'rent-0',    rent: 2 },
+    { id: 'parceiro',  name: 'Fornecedor parceiro',    desc: 'Equipe e máquinas 25% mais baratas.',                 icon: 'caminhao',  prodDisc: 0.75 },
+    { id: 'promo',     name: 'Promoção de acabamento', desc: 'Acabamentos pela metade do preço.',                   icon: 'janela',    finDisc: 0.5 },
+    { id: 'laje',      name: 'Laje rápida',            desc: 'Pavimentos precisam de 20% menos tijolos.',           icon: 'tijolo',    need: 0.8 },
+    { id: 'entregas',  name: 'Entregas frequentes',    desc: 'Entregas de material 2× mais frequentes e com prêmio dobrado.', icon: 'guindaste', crane: 2 },
+    { id: 'blindada',  name: 'Obra blindada',          desc: 'Sem chuva, rachaduras ou multas.',                    icon: 'laudo',     immune: 1 },
+    { id: 'frenesi',   name: 'Ritmo frenético',        desc: 'O combo de cliques vai até ×4.',                      icon: 'ritmo',     comboMax: 4 },
+    { id: 'base',      name: 'Equipe de base',         desc: 'Serventes e pedreiros produzem ×5.',                  icon: 'servente',  base: 5 },
+    { id: 'ouro',      name: 'Olho de ouro',           desc: 'Tijolos de ouro aparecem 2× mais e valem o dobro.',   icon: 'estrela',   gold: 2 },
+    { id: 'adiantado', name: 'Pagamento adiantado',    desc: 'Receba agora 5× o pagamento do próximo pavimento.',   icon: 'rent-1',    instant: 1 },
+  ];
+  // valor combinado de um efeito dos benefícios escolhidos (multiplica)
+  const perkVal = (S, key, def = 1) => {
+    let v = def;
+    for (const id in S.perks) { const pk = PERK_BY_ID[id]; if (pk && pk[key] != null) v = key === 'comboMax' ? Math.max(v, pk[key]) : v * pk[key]; }
+    return v;
+  };
+  const PERK_BY_ID = {};
+  PERKS.forEach(p => { PERK_BY_ID[p.id] = p; });
+  // de quantos em quantos andares aparece uma escolha
+  const perkEvery = P => Math.max(2, Math.ceil(P.floors / 5));
+
+  // ---------------------------------------------------------------
   // Obras (projetos). Ao concluir, entregue para ganhar Reputação.
   // ---------------------------------------------------------------
   const PROJECTS = [
@@ -138,36 +166,65 @@
     return Object.assign({}, p, { floors: p.floors + 5 * rep, stars: p.stars + 3 * rep, record: rep > 0 });
   };
 
-  const upgCount = (S, kind, prod) => {
-    let n = 0;
-    for (const u of UPGRADES) if (S.upg[u.id] && u.kind === kind && (!prod || u.prod === prod)) n++;
-    return n;
-  };
+  // Os cálculos ficam guardados e só são refeitos quando algo muda (chame dirty() após compras).
+  let VER = 0;
+  const dirty = () => { VER++; };
+  let memo = null;
+  function calc(S) {
+    if (memo && memo.v === VER && memo.S === S && memo.floors === S.floors && memo.stars === S.stars) return memo;
+    const m = { v: VER, S, floors: S.floors, stars: S.stars, cnt: { click: 0, ritmo: 0, rent: 0 }, prodCnt: {} };
+    for (const u of UPGRADES) {
+      if (!S.upg[u.id]) continue;
+      if (u.kind === 'prod') m.prodCnt[u.prod] = (m.prodCnt[u.prod] || 0) + 1;
+      else m.cnt[u.kind]++;
+    }
+    m.global = (1 + 0.05 * S.stars) * (1 + 0.01 * Object.keys(S.ach).length);
+    m.prodBps = {};
+    m.bps = 0;
+    const baseBoost = perkVal(S, 'base');
+    const bpsBoost = perkVal(S, 'bps');
+    for (const p of PRODUCERS) {
+      const each = p.bps * Math.pow(2, m.prodCnt[p.id] || 0) * m.global * bpsBoost * ((p.id === 'servente' || p.id === 'pedreiro') ? baseBoost : 1);
+      m.prodBps[p.id] = { each, total: each * S.owned[p.id] };
+      m.bps += each * S.owned[p.id];
+    }
+    m.clickBase = Math.pow(2, m.cnt.click) * m.global * perkVal(S, 'click');
+    m.clickShare = 0.01 * m.cnt.ritmo;
+    m.finishMult = 1 + FINISHES.reduce((a, f) => a + f.bonus * S.owned[f.id], 0);
+    m.rentUpg = Math.pow(1.5, m.cnt.rent);
+    m.rent = baseRent(S.floors) * m.finishMult * m.rentUpg * m.global * perkVal(S, 'rent');
+    memo = m;
+    return m;
+  }
 
+  const upgCount = (S, kind, prod) => kind === 'prod' ? (calc(S).prodCnt[prod] || 0) : calc(S).cnt[kind];
   const starMult = S => 1 + 0.05 * S.stars;
   const achMult = S => 1 + 0.01 * Object.keys(S.ach).length;
-  const globalMult = S => starMult(S) * achMult(S);
+  const globalMult = S => calc(S).global;
 
   const prodMult = (S, id) => Math.pow(2, upgCount(S, 'prod', id));
-  const prodBps = (S, p) => S.owned[p.id] * p.bps * prodMult(S, p.id) * globalMult(S);
-  const bps = S => PRODUCERS.reduce((a, p) => a + prodBps(S, p), 0);
+  const prodEach = (S, p) => calc(S).prodBps[p.id].each;
+  const prodBps = (S, p) => calc(S).prodBps[p.id].total;
+  const bps = S => calc(S).bps;
 
-  const clickBase = S => Math.pow(2, upgCount(S, 'click')) * globalMult(S);
-  const clickBpsShare = S => 0.01 * upgCount(S, 'ritmo');
+  const clickBase = S => calc(S).clickBase;
+  const clickBpsShare = S => calc(S).clickShare;
   const clickPower = (S, bpsNow) => clickBase(S) + bpsNow * clickBpsShare(S);
 
-  const finishMult = S => 1 + FINISHES.reduce((a, f) => a + f.bonus * S.owned[f.id], 0);
-  const rentUpgMult = S => Math.pow(1.5, upgCount(S, 'rent'));
-  const rent = S => baseRent(S.floors) * finishMult(S) * rentUpgMult(S) * globalMult(S);
+  const finishMult = S => calc(S).finishMult;
+  const rentUpgMult = S => calc(S).rentUpg;
+  const rent = S => calc(S).rent;
 
   const prodCost = (S, p, n = 1) => {
-    const a = p.base * Math.pow(PROD_GROWTH, S.owned[p.id]);
+    const a = p.base * Math.pow(PROD_GROWTH, S.owned[p.id]) * perkVal(S, 'prodDisc');
     return Math.ceil(a * (Math.pow(PROD_GROWTH, n) - 1) / (PROD_GROWTH - 1));
   };
   const finishCost = (S, f, n = 1) => {
-    const a = f.base * Math.pow(f.growth, S.owned[f.id]);
+    const a = f.base * Math.pow(f.growth, S.owned[f.id]) * perkVal(S, 'finDisc');
     return Math.ceil(a * (Math.pow(f.growth, n) - 1) / (f.growth - 1));
   };
+  // tijolos que o pavimento i precisa nesta obra (com benefícios)
+  const needFor = (S, i) => Math.ceil(need(i) * perkVal(S, 'need'));
 
   // Estrelas ganhas ao entregar a obra atual
   const deliveryStars = S => project(S).stars;
@@ -194,6 +251,10 @@
   ach('cracks-5', 'Reboco em dia', 'Conserte 5 rachaduras.', S => S.stats.cracks >= 5);
   ach('approved-3', 'Obra exemplar', 'Seja aprovado pelo fiscal 3 vezes.', S => S.stats.approved >= 3);
   ach('choices-10', 'Decisão de gestor', 'Responda 10 propostas.', S => S.stats.choices >= 10);
+  ach('combo-30', 'Martelada sem parar', 'Chegue a um combo de 30 cliques.', S => S.stats.bestCombo >= 30);
+  ach('golden-1', 'Tijolo de ouro', 'Pegue um tijolo de ouro.', S => S.stats.golden >= 1);
+  ach('golden-20', 'Garimpeiro de obra', 'Pegue 20 tijolos de ouro.', S => S.stats.golden >= 20);
+  ach('perks-10', 'Planejador', 'Escolha 10 benefícios de obra.', S => S.stats.perks >= 10);
   ach('money-1e6', 'Milionário', 'Tenha R$ 1 milhão de uma vez.', S => S.money >= 1e6);
   ach('money-1e12', 'Trilionário', 'Tenha R$ 1 trilhão de uma vez.', S => S.money >= 1e12);
   PROJECTS.forEach(p => ach('deliver-' + p.id, 'Entregou: ' + p.name, `Entregue a obra "${p.name}".`, S => (S.delivered[p.id] || 0) >= 1));
@@ -215,15 +276,23 @@
       bricks: 0, floors: 0, money: 0, runBricks: 0, runMoney: 0,
       totalBricks: 0, totalMoney: 0, clicks: 0, playTime: 0,
       owned: freshOwned(), upg: {}, ach: {},
-      stats: { cranes: 0, cracks: 0, inspections: 0, approved: 0, fines: 0, choices: 0 },
+      stats: { cranes: 0, cracks: 0, inspections: 0, approved: 0, fines: 0, choices: 0, golden: 0, bestCombo: 0, perks: 0 },
+      perks: {}, perkAt: 0, perkOffer: null, tut: 0,
       seen: {}, muted: false, lastSave: Date.now(), started: Date.now(),
     };
   }
 
   // Recomeça a obra mantendo o que é permanente
   function newRun(S) {
+    // equipe fiel: 1 de cada tipo de operário/máquina que você tinha vai para a próxima obra
+    const kept = {};
+    for (const p of PRODUCERS) if (S.owned[p.id] > 0) kept[p.id] = 1;
     S.bricks = 0; S.floors = 0; S.money = 0; S.runBricks = 0; S.runMoney = 0;
-    S.owned = freshOwned(); S.upg = {}; S.seen = {};
+    S.owned = Object.assign(freshOwned(), kept); S.upg = {}; S.seen = {};
+    for (const id in kept) S.seen[id] = true;
+    S.perks = {}; S.perkAt = 0; S.perkOffer = null;
+    dirty();
+    return kept;
   }
 
   function addBricks(S, n) {
@@ -238,12 +307,13 @@
       return { done: 0, earned: 0, sold: m };
     }
     S.bricks += n;
-    while (S.floors < target && S.bricks >= need(S.floors)) {
-      S.bricks -= need(S.floors);
+    while (S.floors < target && S.bricks >= needFor(S, S.floors)) {
+      S.bricks -= needFor(S, S.floors);
       const r = reward(S.floors);
       S.money += r; S.runMoney += r; S.totalMoney += r; earned += r;
       S.floors++; done++;
     }
+    if (done) dirty();
     if (S.floors >= target && S.bricks > 0) {
       const m = S.bricks * 0.6;
       S.money += m; S.runMoney += m; S.totalMoney += m;
@@ -272,7 +342,8 @@
   }
 
   const TC = {
-    PRODUCERS, PROD_GROWTH, UPGRADES, FINISHES, SAFETY, PROJECTS, ACHIEVEMENTS,
+    PRODUCERS, PROD_GROWTH, UPGRADES, FINISHES, SAFETY, PROJECTS, ACHIEVEMENTS, PERKS, PERK_BY_ID,
+    perkVal, perkEvery, needFor, prodEach, dirty,
     need, reward, floorRent, baseRent, project, upgCount, starMult, achMult, globalMult,
     prodMult, prodBps, bps, clickBase, clickBpsShare, clickPower, finishMult, rentUpgMult, rent,
     prodCost, finishCost, deliveryStars, freshState, freshOwned, newRun, addBricks, addMoney, fmt,

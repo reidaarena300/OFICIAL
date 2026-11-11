@@ -46,7 +46,8 @@
 
     let camY = 0, dayTime = 80, clock = 0, flash = 0, shake = 0;
     let geo = null;
-    const particles = [], falling = [], inflight = new Set(), cars = [], workers = [];
+    const particles = [], falling = [], inflight = new Set(), cars = [], workers = [], rings = [];
+    let farCache = null, farKey = '';
     const smoke = [];
     let cacheKeyProject = '';
     const facadeCache = new Map();
@@ -71,7 +72,7 @@
     const visibleCount = () => {
       const S = G.S;
       if (geo.complete) return 0;
-      return Math.min(geo.per, Math.floor(S.bricks / root.TC.need(S.floors) * geo.per));
+      return Math.min(geo.per, Math.floor(S.bricks / root.TC.needFor(S, S.floors) * geo.per));
     };
 
     // -------------------------------------------------------------
@@ -698,24 +699,34 @@
     function drawCity(night) {
       const far = GROUND_Y + camY * 0.35;
       if (far - 110 < H) {
-        // montanhas
-        const mBody = rgb(mix([138, 168, 196], [24, 30, 60], night));
-        for (let x = 0; x < W; x++) {
-          const h = 40 + 18 * Math.sin(x * 0.021 + 2) + 9 * Math.sin(x * 0.067);
-          R(ctx, mBody, x, Math.floor(far - h - 20), 1, Math.ceil(h) + 60);
-        }
-        const body = rgb(mix([150, 180, 205], [30, 36, 70], night));
-        const edge = rgb(mix([132, 164, 190], [24, 29, 58], night));
-        for (const b of cityFar) {
-          const y = Math.floor(far - b.h);
-          R(ctx, body, b.x, y, b.w, b.h + 80); R(ctx, edge, b.x, y, b.w, 1);
-          if (b.top === 1) R(ctx, edge, b.x + b.w / 2, y - 6, 1, 6);
-          if (night > 0.3) {
-            ctx.globalAlpha = night;
-            for (let wy = 3; wy < b.h; wy += 5) for (let wx = 2; wx < b.w - 1; wx += 3) if (hash(b.s * 37 + wx, wy) > 0.7) R(ctx, '#ffd36b', b.x + wx, y + wy, 1, 2);
-            ctx.globalAlpha = 1;
+        // montanhas e cidade distante: desenhadas num canvas guardado, refeito só quando a luz muda
+        const key = String(Math.round(night * 10));
+        if (key !== farKey) {
+          farKey = key;
+          const nl = Math.round(night * 10) / 10;
+          if (!farCache) { farCache = document.createElement('canvas'); farCache.width = W; farCache.height = 260; }
+          const g = farCache.getContext('2d');
+          g.clearRect(0, 0, W, 260);
+          const base = 170;
+          const mBody = rgb(mix([138, 168, 196], [24, 30, 60], nl));
+          for (let x = 0; x < W; x++) {
+            const h = 40 + 18 * Math.sin(x * 0.021 + 2) + 9 * Math.sin(x * 0.067);
+            R(g, mBody, x, Math.floor(base - h - 20), 1, Math.ceil(h) + 120);
+          }
+          const body = rgb(mix([150, 180, 205], [30, 36, 70], nl));
+          const edge = rgb(mix([132, 164, 190], [24, 29, 58], nl));
+          for (const b of cityFar) {
+            const y = Math.floor(base - b.h);
+            R(g, body, b.x, y, b.w, b.h + 100); R(g, edge, b.x, y, b.w, 1);
+            if (b.top === 1) R(g, edge, b.x + b.w / 2, y - 6, 1, 6);
+            if (nl > 0.3) {
+              g.globalAlpha = nl;
+              for (let wy = 3; wy < b.h; wy += 5) for (let wx = 2; wx < b.w - 1; wx += 3) if (hash(b.s * 37 + wx, wy) > 0.7) R(g, '#ffd36b', b.x + wx, y + wy, 1, 2);
+              g.globalAlpha = 1;
+            }
           }
         }
+        ctx.drawImage(farCache, 0, Math.floor(far) - 170);
       }
       const near = GROUND_Y + camY * 0.6;
       if (near - 80 < H) {
@@ -1098,6 +1109,53 @@
       }
     }
 
+    // ---------- Tijolo de ouro ----------
+    function goldPos() {
+      const g = G.EV.gold;
+      return brickXY(g.k, floorBase(G.S.floors));
+    }
+    function drawGold() {
+      const g = G.EV.gold;
+      if (!g || geo.complete) return;
+      const p = goldPos();
+      const x = Math.round(Math.max(geo.bx, p.x)), w = Math.min(BW - 1, p.x + BW - 1 - x);
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(clock * 10);
+      R(ctx, '#fff0a6', x - 3, p.y - 2, w + 6, BH + 4);
+      ctx.globalAlpha = 1;
+      R(ctx, '#c9952a', x, p.y + 1, w, BH - 1);
+      R(ctx, '#f2c14e', x, p.y + 1, w, BH - 2);
+      R(ctx, '#fff6d5', x, p.y + 1, w, 1);
+      const sh = Math.floor(clock * 8) % (w + 4);
+      if (sh < w) R(ctx, '#ffffff', x + sh, p.y + 1, 1, BH - 1);
+      // seta pulando em cima do tijolo
+      const ay = p.y - 12 - Math.round(Math.abs(Math.sin(clock * 5)) * 4), ax = x + Math.round(w / 2);
+      R(ctx, '#2b1d14', ax - 3, ay - 1, 7, 5);
+      R(ctx, '#f2c14e', ax - 2, ay, 5, 1); R(ctx, '#f2c14e', ax - 1, ay + 1, 3, 1); R(ctx, '#f2c14e', ax, ay + 2, 1, 1);
+      R(ctx, '#f2c14e', ax - 1, ay - 5, 3, 5); R(ctx, '#2b1d14', ax - 2, ay - 6, 5, 1);
+      for (let i = 0; i < 3; i++) {
+        const a = clock * 3 + i * 2.1;
+        const sx = x + w / 2 + Math.cos(a) * 9, sy = p.y + 2 + Math.sin(a) * 6;
+        R(ctx, '#fff6d5', sx, sy, 1, 1);
+        if ((Math.floor(clock * 6) + i) % 2) { R(ctx, '#fff6d5', sx - 1, sy, 3, 1); R(ctx, '#fff6d5', sx, sy - 1, 1, 3); }
+      }
+    }
+
+    // ---------- Anéis de impacto do clique ----------
+    function drawRings(dt) {
+      for (let i = rings.length - 1; i >= 0; i--) {
+        const r = rings[i];
+        r.t += dt;
+        if (r.t > 0.28) { rings.splice(i, 1); continue; }
+        const rad = 3 + r.t * 50;
+        ctx.globalAlpha = 1 - r.t / 0.28;
+        for (let k = 0; k < 12; k++) {
+          const a = k / 12 * Math.PI * 2;
+          R(ctx, r.c, r.x + Math.cos(a) * rad, r.y + Math.sin(a) * rad, 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
     // -------------------------------------------------------------
     // Prédio
     // -------------------------------------------------------------
@@ -1171,6 +1229,7 @@
       drawTowerCrane();
       const glass = drawBuilding();
       drawCrack();
+      drawGold();
       if (!geo.complete) drawPrinter(floorBase(G.S.floors));
       drawWorkers();
       drawInspector();
@@ -1179,6 +1238,7 @@
       for (const s of smoke) { ctx.globalAlpha = Math.min(0.6, s.life / 3); disc(ctx, s.x, s.y, Math.round(s.r), night > 0.5 ? '#5a5f70' : '#d8dde2'); }
       ctx.globalAlpha = 1;
       for (const pt of particles) R(ctx, pt.c, pt.x, pt.y, 1, 1);
+      drawRings(dt);
       drawRain(dt);
 
       if (night > 0) {
@@ -1221,6 +1281,15 @@
       spawnFalling(k) { updateGeo(); spawnFalling(k); },
       clearFalling() { falling.length = 0; inflight.clear(); },
       dust, confetti,
+      ring(x, y, hot) { if (rings.length < 12) rings.push({ x, y, t: 0, c: hot ? '#f2c14e' : '#fff6d5' }); },
+      goldSpot() { updateGeo(); const vc = visibleCount(); return vc > 12 ? Math.floor(Math.random() * vc) : -1; },
+      goldPos: () => { updateGeo(); return goldPos(); },
+      hitGold(x, y) {
+        if (!G.EV.gold) return false;
+        updateGeo();
+        const p = goldPos();
+        return x > p.x - 7 && x < p.x + BW + 7 && y > p.y - 7 && y < p.y + BH + 7;
+      },
       floorTopY: () => floorBase(G.S.floors) - WALL_H,
       floorBaseY: () => floorBase(G.S.floors),
       wallSpan: () => { updateGeo(); return { bx: geo.bx, ww: geo.ww }; },

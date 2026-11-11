@@ -34,6 +34,11 @@
         <div class="fx" id="fx" aria-hidden="true"></div>
         <div class="hint" id="hint">Clique na obra para assentar tijolos</div>
         <div class="toasts" id="toasts" aria-live="polite"></div>
+        <div class="combo" id="combo" aria-hidden="true" hidden>
+          <span class="combo-n" id="combo-n">Combo 0</span>
+          <span class="combo-x" id="combo-x">×1</span>
+          <div class="combo-bar"><div id="combo-fill"></div></div>
+        </div>
         <div class="choice" id="choice" role="dialog" aria-labelledby="choice-title" hidden>
           <p class="choice-title" id="choice-title"></p>
           <p class="choice-text" id="choice-text"></p>
@@ -44,7 +49,7 @@
           <div class="choice-timer"><div id="choice-bar"></div></div>
         </div>
       </div>
-      <div class="progress">
+      <div class="progress" id="progress">
         <div class="progress-label"><span id="pv-name">1º de 3 pavimentos</span><span id="pv-count">0 / 50 tijolos</span></div>
         <div class="bar"><div class="fill" id="pv-fill"></div></div>
       </div>
@@ -58,16 +63,13 @@
     <aside class="panel" aria-label="Painel">
       <div class="tabs" role="tablist">
         <button type="button" role="tab" id="tabbtn-loja" aria-controls="tab-loja" aria-selected="true">Loja</button>
+        <button type="button" role="tab" id="tabbtn-melhorias" aria-controls="tab-melhorias" aria-selected="false">Melhorias <span class="badge" id="upg-badge" hidden>0</span></button>
         <button type="button" role="tab" id="tabbtn-conquistas" aria-controls="tab-conquistas" aria-selected="false">Conquistas</button>
         <button type="button" role="tab" id="tabbtn-obra" aria-controls="tab-obra" aria-selected="false">Obra</button>
       </div>
 
       <div class="tab" id="tab-loja" role="tabpanel" aria-labelledby="tabbtn-loja">
-        <h2 class="shop-cat">Melhorias</h2>
-        <div class="upgrades" id="upgrades"></div>
-        <p class="muted" id="upg-empty">Novas melhorias aparecem conforme a obra avança.</p>
-        <div class="upg-detail" id="upg-detail"></div>
-
+        <button type="button" class="upg-shortcut" id="upg-shortcut" hidden></button>
         <div class="shop-head">
           <h2 class="shop-cat">Equipe e máquinas</h2>
           <div class="qty" role="group" aria-label="Quantidade">
@@ -85,6 +87,15 @@
         <div class="list" id="safety"></div>
       </div>
 
+      <div class="tab" id="tab-melhorias" role="tabpanel" aria-labelledby="tabbtn-melhorias" hidden>
+        <h2 class="shop-cat">Disponíveis</h2>
+        <div class="upgrades" id="upgrades"></div>
+        <p class="muted" id="upg-empty">Novas melhorias aparecem conforme a obra avança.</p>
+        <div class="upg-detail" id="upg-detail"></div>
+        <h2 class="shop-cat">Compradas nesta obra <span id="upg-owned-count"></span></h2>
+        <div class="upgrades owned" id="upg-owned"></div>
+      </div>
+
       <div class="tab" id="tab-conquistas" role="tabpanel" aria-labelledby="tabbtn-conquistas" hidden>
         <p class="summary" id="ach-summary"></p>
         <div class="ach-grid" id="ach-grid"></div>
@@ -96,6 +107,7 @@
         <ol class="proj-list" id="proj-list"></ol>
         <h2 class="shop-cat">Estatísticas</h2>
         <dl class="stats-list" id="stats-list"></dl>
+        <button type="button" class="link-btn" id="btn-tutorial">Ver o tutorial de novo</button>
       </div>
     </aside>
   </main>
@@ -104,7 +116,7 @@
     <button type="button" id="btn-sound">Som: ligado</button>
     <button type="button" id="btn-save">Salvar</button>
     <span class="reset" id="reset-wrap"></span>
-    <span class="ver">v1.0</span>
+    <span class="ver">v1.1</span>
   </footer>
 </div>
 
@@ -113,6 +125,23 @@
     <h2 id="offline-title">Bem-vindo de volta!</h2>
     <p id="offline-text"></p>
     <button type="button" id="offline-ok">Continuar a obra</button>
+  </div>
+</div>
+
+<div class="modal" id="perk-modal" hidden>
+  <div class="modal-box perk-box" role="dialog" aria-labelledby="perk-title">
+    <h2 id="perk-title">Escolha um benefício para esta obra</h2>
+    <p class="muted">Vale até você entregar a obra.</p>
+    <div class="perk-cards" id="perk-cards"></div>
+  </div>
+</div>
+
+<div class="coach" id="coach" role="dialog" aria-labelledby="coach-text" hidden>
+  <p class="coach-step" id="coach-step"></p>
+  <p class="coach-text" id="coach-text"></p>
+  <div class="coach-actions">
+    <button type="button" id="coach-skip">Pular tutorial</button>
+    <button type="button" class="cta" id="coach-next">Próximo</button>
   </div>
 </div>
 
