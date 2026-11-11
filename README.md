@@ -14,10 +14,10 @@ Clique para assentar tijolos, erga prédios andar por andar, monte sua equipe e 
   - **Segurança:** lona, kit de EPI e laudo do engenheiro protegem contra os imprevistos.
 - **Obras:** Casa → Sobrado → Edifício residencial → Edifício comercial → Hotel → Arranha-céu → Torre recorde.
   Ao terminar uma obra, **entregue-a** para ganhar estrelas de **Reputação** (+5% em tudo, para sempre) e começar a próxima.
+  A Torre recorde fica 5 andares mais alta a cada entrega.
   **Equipe fiel:** 1 de cada tipo de operário ou máquina que você tinha vai junto para a próxima obra.
 - **Benefícios da obra:** em alguns andares você escolhe 1 entre 3 cartas (ex.: cliques ×3, aluguel ×2, obra blindada, laje rápida). Cada obra fica diferente.
 - **Tutorial** passo a passo depois do 1º pavimento (dá para rever na aba Obra).
-  A Torre recorde fica 5 andares mais alta a cada entrega.
 - **Imprevistos** (a partir do 1º pavimento):
   - **Entrega de material:** clique no palete para ganhar tijolos, dinheiro, cliques ×7 ou equipe ×4.
   - **Chuva:** equipe −50% por 30s (a lona evita).
